@@ -1,0 +1,148 @@
+{
+  "schema_version": "1.0",
+  "render_pipeline_version": "1.0.0",
+  "processing_order": [
+    "orientation_and_icc_to_srgb",
+    "geometry",
+    "srgb_to_linear",
+    "white_balance_exposure",
+    "basic_tone",
+    "linear_to_srgb",
+    "master_then_channel_curves",
+    "hsl_vibrance_saturation",
+    "color_grading",
+    "fade",
+    "sharpness_clarity_local_contrast",
+    "grain_vignette",
+    "srgb_rgba8_encode"
+  ],
+  "parameters": {
+    "exposure_ev": 0,
+    "contrast": 0,
+    "highlights": 0,
+    "shadows": 0,
+    "whites": 0,
+    "blacks": 0,
+    "temperature_shift": 0,
+    "tint": 0,
+    "vibrance": 0,
+    "saturation": 0,
+    "hsl": {
+      "red": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "orange": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "yellow": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "green": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "cyan": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "blue": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "purple": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "magenta": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      }
+    },
+    "tone_curves": {
+      "rgb": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "red": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "green": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "blue": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "color_grading": {
+      "shadows": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "midtones": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "highlights": {
+        "hue": 0,
+        "saturation": 0,
+        "luminance": 0
+      },
+      "balance": 0,
+      "blending": 50
+    },
+    "texture": {
+      "sharpness": 0,
+      "clarity": 0,
+      "local_contrast": 0,
+      "grain_amount": 0,
+      "grain_size": 0,
+      "vignette": 0,
+      "fade": 0,
+      "grain_seed": 12345
+    },
+    "geometry": {
+      "crop": null,
+      "rotation_degrees": 0
+    }
+  }
+}

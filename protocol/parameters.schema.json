@@ -1,0 +1,692 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://g23.lab/schema/parameters-1.0.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "render_pipeline_version": {
+      "const": "1.0.0"
+    },
+    "processing_order": {
+      "const": [
+        "orientation_and_icc_to_srgb",
+        "geometry",
+        "srgb_to_linear",
+        "white_balance_exposure",
+        "basic_tone",
+        "linear_to_srgb",
+        "master_then_channel_curves",
+        "hsl_vibrance_saturation",
+        "color_grading",
+        "fade",
+        "sharpness_clarity_local_contrast",
+        "grain_vignette",
+        "srgb_rgba8_encode"
+      ]
+    },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "contrast": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "highlights": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "shadows": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "whites": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "blacks": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "temperature_shift": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "tint": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "vibrance": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "saturation": {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100,
+          "description": "relative UI units"
+        },
+        "exposure_ev": {
+          "type": "number",
+          "minimum": -5,
+          "maximum": 5,
+          "description": "EV relative to capture"
+        },
+        "hsl": {
+          "type": "object",
+          "properties": {
+            "red": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "orange": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "yellow": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "green": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "cyan": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "blue": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "purple": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "magenta": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "cyan",
+            "blue",
+            "purple",
+            "magenta"
+          ],
+          "additionalProperties": false
+        },
+        "tone_curves": {
+          "type": "object",
+          "properties": {
+            "rgb": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 32,
+              "items": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "description": "Strictly increasing x; first x=0, last x=1; shape preserving Hermite"
+            },
+            "red": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 32,
+              "items": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "description": "Strictly increasing x; first x=0, last x=1; shape preserving Hermite"
+            },
+            "green": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 32,
+              "items": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "description": "Strictly increasing x; first x=0, last x=1; shape preserving Hermite"
+            },
+            "blue": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 32,
+              "items": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "description": "Strictly increasing x; first x=0, last x=1; shape preserving Hermite"
+            }
+          },
+          "required": [
+            "rgb",
+            "red",
+            "green",
+            "blue"
+          ],
+          "additionalProperties": false
+        },
+        "color_grading": {
+          "type": "object",
+          "properties": {
+            "shadows": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 360,
+                  "description": "degrees"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "midtones": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 360,
+                  "description": "degrees"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "highlights": {
+              "type": "object",
+              "properties": {
+                "hue": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 360,
+                  "description": "degrees"
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "description": "UI"
+                },
+                "luminance": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100,
+                  "description": "UI"
+                }
+              },
+              "required": [
+                "hue",
+                "saturation",
+                "luminance"
+              ],
+              "additionalProperties": false
+            },
+            "balance": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "description": "UI"
+            },
+            "blending": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "UI"
+            }
+          },
+          "required": [
+            "shadows",
+            "midtones",
+            "highlights",
+            "balance",
+            "blending"
+          ],
+          "additionalProperties": false
+        },
+        "texture": {
+          "type": "object",
+          "properties": {
+            "sharpness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "UI"
+            },
+            "clarity": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "description": "UI"
+            },
+            "local_contrast": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "description": "UI"
+            },
+            "grain_amount": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "UI"
+            },
+            "grain_size": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "UI"
+            },
+            "vignette": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "description": "UI"
+            },
+            "fade": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "UI"
+            },
+            "grain_seed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "required": [
+            "sharpness",
+            "clarity",
+            "local_contrast",
+            "grain_amount",
+            "grain_size",
+            "vignette",
+            "fade",
+            "grain_seed"
+          ],
+          "additionalProperties": false
+        },
+        "geometry": {
+          "type": "object",
+          "properties": {
+            "crop": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "UI"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                }
+              ],
+              "description": "Normalized [left,top,right,bottom], positive area, before rotation"
+            },
+            "rotation_degrees": {
+              "enum": [
+                0,
+                90,
+                180,
+                270
+              ]
+            }
+          },
+          "required": [
+            "crop",
+            "rotation_degrees"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "contrast",
+        "highlights",
+        "shadows",
+        "whites",
+        "blacks",
+        "temperature_shift",
+        "tint",
+        "vibrance",
+        "saturation",
+        "exposure_ev",
+        "hsl",
+        "tone_curves",
+        "color_grading",
+        "texture",
+        "geometry"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "render_pipeline_version",
+    "processing_order",
+    "parameters"
+  ],
+  "additionalProperties": false
+}

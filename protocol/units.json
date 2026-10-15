@@ -1,0 +1,13 @@
+{
+  "exposure_ev": "EV",
+  "temperature_shift": "relative original white balance; log2 red/blue gain \u00b10.5",
+  "tint": "relative green/magenta log2 gain",
+  "hsl.hue": "UI /100 *30 degrees",
+  "hsl.saturation": "gain 1+UI/100",
+  "hsl.luminance": "offset UI/100 *0.25",
+  "color_grading.hue": "degrees",
+  "tone_curves": "normalized sRGB input/output",
+  "grain_seed": "uint32",
+  "geometry.crop": "normalized pre-rotation bounds",
+  "other": "UI units; precise mappings in docs/PIPELINE.md"
+}

@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://g23.lab/schema/metadata-1.0.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "sample_id": {
+      "type": "string",
+      "pattern": "^G23_[A-Za-z0-9_-]+$"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "approved"
+      ]
+    },
+    "style": {
+      "type": "string"
+    },
+    "capture": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "enum": [
+            "Android",
+            "HarmonyOS NEXT"
+          ]
+        },
+        "device_brand": {
+          "type": "string"
+        },
+        "device_model": {
+          "type": "string"
+        },
+        "os_version": {
+          "type": "string"
+        },
+        "camera_id": {
+          "type": "string"
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "format": {
+          "const": "JPEG"
+        },
+        "iso": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "exposure_time_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "aperture": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "focal_length": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "equivalent_focal_length_35mm": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "white_balance": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "platform",
+        "device_brand",
+        "device_model",
+        "os_version",
+        "camera_id",
+        "captured_at",
+        "width",
+        "height",
+        "format",
+        "iso",
+        "exposure_time_seconds",
+        "aperture",
+        "focal_length",
+        "equivalent_focal_length_35mm",
+        "white_balance"
+      ]
+    },
+    "scene": {
+      "type": "object",
+      "properties": {
+        "lighting": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "User assigned, never inferred AI labels"
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "User assigned, never inferred AI labels"
+        },
+        "rating": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 5
+        },
+        "notes": {
+          "type": "string"
+        },
+        "style_features": {
+          "type": "string"
+        },
+        "satisfied": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "lighting",
+        "subjects",
+        "rating",
+        "notes",
+        "style_features",
+        "satisfied"
+      ]
+    },
+    "render_pipeline_version": {
+      "const": "1.0.0"
+    },
+    "sha256": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "original.jpg",
+          "original.dng",
+          "edited.png",
+          "thumbnail_before.jpg",
+          "thumbnail_after.jpg",
+          "parameters.json"
+        ]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "sample_id",
+    "status",
+    "style",
+    "capture",
+    "scene"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "sha256",
+          "render_pipeline_version"
+        ],
+        "properties": {
+          "sha256": {
+            "required": [
+              "original.jpg",
+              "edited.png",
+              "thumbnail_before.jpg",
+              "thumbnail_after.jpg",
+              "parameters.json"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

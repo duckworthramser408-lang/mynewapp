@@ -1,0 +1,24 @@
+.build/
+__pycache__/
+*.pyc
+.gradle/
+.kotlin/
+build/
+local.properties
+.cxx/
+node_modules/
+oh_modules/
+.hvigor/
+*.hap
+*.apk
+*.zip
+
+# Local IDE state and signing material
+.idea/
+*.jks
+*.keystore
+*.p12
+keystore.properties
+
+# Reviewed debug build for GitHub downloads
+!downloads/G23-Lab-debug.apk

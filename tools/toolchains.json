@@ -1,0 +1,26 @@
+[
+  {
+    "name": "gradle",
+    "archive": "gradle.zip",
+    "url": "https://services.gradle.org/distributions/gradle-8.9-bin.zip",
+    "sha256": "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab",
+    "home": "gradle-8.9",
+    "executable": "bin/gradle"
+  },
+  {
+    "name": "jdk",
+    "archive": "jdk.tar.gz",
+    "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz",
+    "sha256": "3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e",
+    "home": "jdk-17.0.20.1+1",
+    "executable": "bin/java"
+  },
+  {
+    "name": "android",
+    "archive": "android.zip",
+    "url": "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip",
+    "sha256": "2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258",
+    "home": "android-sdk/cmdline-tools/latest",
+    "executable": "bin/sdkmanager"
+  }
+]

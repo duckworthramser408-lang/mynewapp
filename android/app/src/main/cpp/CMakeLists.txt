@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22)
+project(g23_android LANGUAGES CXX)
+add_subdirectory(../../../../../core g23-core)
+add_library(g23_android SHARED bridge.cpp)
+target_link_libraries(g23_android g23 jnigraphics)

@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "0.1.0",
+  "description": "G23 native camera",
+  "main": "",
+  "author": "G23",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "libg23.so": "file:./src/main/cpp/types/libg23"
+  }
+}
