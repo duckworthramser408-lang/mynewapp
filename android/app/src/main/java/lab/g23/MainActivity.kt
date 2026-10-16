@@ -50,6 +50,61 @@ class MainActivity : ComponentActivity() {
     private var screen = ""
     private var category = "基础"
     private var editorControls: LinearLayout? = null
+    private var cameraLayout: CameraLayout? = null
+    private var capabilityText = "正在连接相机"
+    private var pendingExport: File? = null
+    private val preferences by lazy { getSharedPreferences("camera", MODE_PRIVATE) }
+    private val saveArchive =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri
+            ->
+            finishFileSave(uri)
+        }
+    private val saveAnalysis =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri
+            ->
+            finishFileSave(uri)
+        }
+
+    private fun finishFileSave(uri: android.net.Uri?) {
+        val file = pendingExport ?: return
+        pendingExport = null
+        if (uri == null) return
+        background(
+            "正在保存文件",
+            {
+                contentResolver.openOutputStream(uri, "wt")!!.use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                }
+            },
+        ) {
+            AlertDialog.Builder(this)
+                .setTitle("文件已保存")
+                .setMessage("${file.name}\n已保存到你选择的位置，可在系统文件管理器查看。")
+                .setPositiveButton("完成", null)
+                .setNeutralButton("发送文件") { _, _ ->
+                    val shared = FileProvider.getUriForFile(this, "$packageName.files", file)
+                    startActivity(
+                        Intent.createChooser(
+                            Intent(Intent.ACTION_SEND)
+                                .setType(
+                                    if (file.extension == "zip") "application/zip"
+                                    else "application/json"
+                                )
+                                .putExtra(Intent.EXTRA_STREAM, shared)
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                            "发送分析文件",
+                        )
+                    )
+                }
+                .show()
+        }
+    }
+
+    override fun onSaveInstanceState(out: Bundle) {
+        super.onSaveInstanceState(out)
+        out.putString("pendingExport", pendingExport?.path)
+    }
+
     private val permission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             if (it) cameraPage() else message("需要相机权限才能拍摄；照片仅保存在本机。可在系统设置开启权限。")
@@ -74,7 +129,7 @@ class MainActivity : ComponentActivity() {
                     val data = preset.optJSONObject("document") ?: preset
                     validatePreset(data)
                     store.savePreset(
-                        preset.optString("name", "Imported ${System.currentTimeMillis()}"),
+                        preset.optString("name", "导入预设 ${System.currentTimeMillis()}"),
                         data,
                     )
                 }
@@ -94,8 +149,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         store = SampleStore(this)
-        window.statusBarColor = Color.rgb(16, 17, 16)
-        window.navigationBarColor = Color.rgb(16, 17, 16)
+        pendingExport = state?.getString("pendingExport")?.let { File(it) }
+        rawRequested = preferences.getBoolean("raw", false)
+        ratio = preferences.getString("ratio", "4:3") ?: "4:3"
+        window.statusBarColor = LabUi.background
+        window.navigationBarColor = LabUi.background
         cameraPage()
     }
 
@@ -115,60 +173,34 @@ class MainActivity : ComponentActivity() {
         message(e.message ?: e.javaClass.simpleName)
     }
 
-    private fun column() =
-        LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(12, 8, 12, 8)
-        }
+    private fun column() = LabUi.column(this)
 
     private fun text(s: String, size: Float = 14f) =
-        TextView(this).apply {
-            text = s
-            textSize = size
-            setTextColor(Color.rgb(220, 224, 217))
-            setPadding(4, 8, 4, 8)
-        }
+        LabUi.text(this, s, size).apply { setPadding(0, 6.dp(), 0, 6.dp()) }
 
     private fun button(s: String, action: () -> Unit) =
-        Button(this).apply {
-            text = s
-            isAllCaps = false
-            setOnClickListener {
-                if (!busy)
-                    try {
-                        action()
-                    } catch (e: Exception) {
-                        error(e)
-                    }
-            }
+        LabUi.button(this, s) {
+            if (!busy)
+                try {
+                    action()
+                } catch (e: Exception) {
+                    error(e)
+                }
         }
 
-    private fun row(vararg views: View) =
-        LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            views.forEach {
-                addView(it, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            }
-        }
+    private fun row(vararg views: View) = LabUi.weightedRow(this, *views)
 
     private fun page(title: String) {
-        screen = title.substringAfterLast(" / ")
+        screen = title
         generation.incrementAndGet()
-        root = column()
-        root.setBackgroundColor(Color.rgb(16, 17, 16))
-        val heading = text(title, 21f)
-        root.addView(heading)
+        root = column().apply { setBackgroundColor(LabUi.background) }
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, ins ->
             val safe = ins.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(12, safe.top + 8, 12, safe.bottom + 8)
+            v.setPadding(16.dp(), safe.top, 16.dp(), safe.bottom + 8.dp())
             ins
         }
         root.requestApplyInsets()
-    }
-
-    private fun nav() {
-        root.addView(row(button("Camera") { cameraPage() }, button("Dataset") { datasetPage() }))
     }
 
     private fun background(label: String, action: () -> Unit) = background(label, action, {})
@@ -215,79 +247,111 @@ class MainActivity : ComponentActivity() {
 
     private fun cameraPage() {
         leaveEditor()
-        page("G23 Lab / Camera")
-        nav()
+        page("Camera")
+        capture = null
+        val grid = GridOverlay(this).apply { gridVisible = preferences.getBoolean("grid", true) }
+        val layout =
+            CameraLayout(
+                this,
+                onShoot = { if (!busy) shoot() },
+                onAlbum = { if (!busy) datasetPage() },
+                onFlip = {
+                    if (!busy) {
+                        front = !front
+                        cameraPage()
+                    }
+                },
+                onSettings = { if (!busy) cameraSettings(grid) },
+                onFlash = {
+                    if (!busy) {
+                        if (camera?.cameraInfo?.hasFlashUnit() != true) message("当前摄像头没有闪光灯")
+                        else {
+                            flash = !flash
+                            cameraLayout?.setFlash(flash)
+                            capture?.flashMode =
+                                if (flash) ImageCapture.FLASH_MODE_ON
+                                else ImageCapture.FLASH_MODE_OFF
+                            Toast.makeText(
+                                    this,
+                                    if (flash) "闪光灯已开启" else "闪光灯已关闭",
+                                    Toast.LENGTH_SHORT,
+                                )
+                                .show()
+                        }
+                    }
+                },
+                onGrid = {
+                    grid.gridVisible = !grid.gridVisible
+                    preferences.edit().putBoolean("grid", grid.gridVisible).apply()
+                    grid.invalidate()
+                },
+                onRatio = {
+                    if (!busy) {
+                        ratio = it
+                        preferences.edit().putString("ratio", it).apply()
+                        cameraPage()
+                    }
+                },
+            )
+        cameraLayout = layout
+        root.addView(layout, LinearLayout.LayoutParams(-1, -1))
+        layout.selectedRatio = ratio
+        layout.setFlash(flash)
+        layout.exposurePanel.visibility =
+            if (preferences.getBoolean("exposure", false)) View.VISIBLE else View.GONE
+        val seek = layout.exposureSlider
+        val ev = layout.exposureLabel
+        store.all().firstOrNull()?.let { target ->
+            worker.execute {
+                runCatching {
+                        Imaging.decode(
+                            File(target, "thumbnail_after.jpg").takeIf { it.isFile }
+                                ?: File(target, "original.jpg"),
+                            120,
+                        )
+                    }
+                    .onSuccess { bitmap ->
+                        runOnUiThread {
+                            if (cameraLayout === layout && screen == "Camera") {
+                                layout.thumbnail.setImageBitmap(bitmap)
+                                layout.thumbnail.visibility = View.VISIBLE
+                            } else bitmap.recycle()
+                        }
+                    }
+            }
+        }
         if (
             ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) !=
                 PackageManager.PERMISSION_GRANTED
         ) {
-            root.addView(text("需要摄像头权限以实时预览及拍照；照片默认仅存本机，不上传。"))
-            root.addView(button("允许使用相机") { permission.launch(Manifest.permission.CAMERA) })
+            layout.status("允许相机权限，开始拍摄\n照片与数据保存在本机")
+            val allow = button("允许使用相机") { permission.launch(Manifest.permission.CAMERA) }
+            layout.viewfinder.addView(
+                allow,
+                FrameLayout.LayoutParams(-2, 48.dp(), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+                    .apply { bottomMargin = 32.dp() },
+            )
             return
         }
-        val frame = FrameLayout(this)
         val view =
             PreviewView(this).apply {
                 implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                scaleType = PreviewView.ScaleType.FIT_CENTER
+                scaleType = PreviewView.ScaleType.FILL_CENTER
             }
-        val grid = GridOverlay(this)
-        frame.addView(view, FrameLayout.LayoutParams(-1, -1))
-        frame.addView(grid, FrameLayout.LayoutParams(-1, -1))
-        root.addView(frame, LinearLayout.LayoutParams(-1, 0, 1f))
-        val capabilities = text("正在连接真实摄像头…")
-        root.addView(capabilities)
-        root.addView(
-            row(
-                button("切换") {
-                    front = !front
-                    cameraPage()
-                },
-                button("闪光") {
-                    val c = camera ?: return@button
-                    if (!c.cameraInfo.hasFlashUnit()) message("该摄像头无闪光灯")
-                    else {
-                        flash = !flash
-                        capture?.flashMode =
-                            if (flash) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
-                        message(if (flash) "闪光开启" else "闪光关闭")
-                    }
-                },
-                button("网格") {
-                    grid.gridVisible = !grid.gridVisible
-                    grid.invalidate()
-                },
-                button(ratio) {
-                    val options = arrayOf("4:3", "3:2", "1:1")
-                    AlertDialog.Builder(this)
-                        .setTitle("比例均从原生 JPEG 居中裁切；原图保留")
-                        .setItems(options) { _, i ->
-                            ratio = options[i]
-                            cameraPage()
-                        }
-                        .show()
-                },
-            )
-        )
-        root.addView(
-            button(if (rawRequested) "RAW + JPEG 已请求" else "可选 RAW + JPEG") {
-                rawRequested = !rawRequested
-                cameraPage()
-            }
-        )
-        val ev = text("曝光补偿")
-        root.addView(ev)
-        val seek = SeekBar(this)
-        root.addView(seek)
-        root.addView(button("●  拍摄高质量 JPEG") { shoot() })
-        view.setOnTouchListener { _, e ->
-            if (e.action == MotionEvent.ACTION_UP) {
-                camera
-                    ?.cameraControl
-                    ?.startFocusAndMetering(
-                        FocusMeteringAction.Builder(view.meteringPointFactory.createPoint(e.x, e.y))
-                            .build()
-                    )
+        layout.viewfinder.addView(view, 0, FrameLayout.LayoutParams(-1, -1))
+        layout.viewfinder.addView(grid, 1, FrameLayout.LayoutParams(-1, -1))
+        layout.status("正在连接相机")
+        view.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_UP) {
+                val action =
+                    FocusMeteringAction.Builder(
+                            view.meteringPointFactory.createPoint(event.x, event.y)
+                        )
+                        .build()
+                camera?.let {
+                    if (it.cameraInfo.isFocusMeteringSupported(action))
+                        it.cameraControl.startFocusAndMetering(action)
+                }
                 view.performClick()
             }
             true
@@ -295,7 +359,7 @@ class MainActivity : ComponentActivity() {
         val request = ProcessCameraProvider.getInstance(this)
         request.addListener(
             {
-                if (screen != "Camera" || isDestroyed) return@addListener
+                if (screen != "Camera" || cameraLayout !== layout || isDestroyed) return@addListener
                 try {
                     provider = request.get()
                     provider!!.unbindAll()
@@ -304,7 +368,10 @@ class MainActivity : ComponentActivity() {
                         else CameraSelector.DEFAULT_BACK_CAMERA
                     require(provider!!.hasCamera(select)) { "未发现所选摄像头" }
                     val preview =
-                        Preview.Builder().build().apply { setSurfaceProvider(view.surfaceProvider) }
+                        Preview.Builder()
+                            .setTargetRotation(view.display?.rotation ?: Surface.ROTATION_0)
+                            .build()
+                            .apply { setSurfaceProvider(view.surfaceProvider) }
                     rawSupported =
                         ImageCapture.getImageCaptureCapabilities(provider!!.getCameraInfo(select))
                             .supportedOutputFormats
@@ -312,6 +379,7 @@ class MainActivity : ComponentActivity() {
                     rawActive = rawRequested && rawSupported
                     capture =
                         ImageCapture.Builder()
+                            .setTargetRotation(view.display?.rotation ?: Surface.ROTATION_0)
                             .setOutputFormat(
                                 if (rawActive) ImageCapture.OUTPUT_FORMAT_RAW_JPEG
                                 else ImageCapture.OUTPUT_FORMAT_JPEG
@@ -331,6 +399,7 @@ class MainActivity : ComponentActivity() {
                         rawActive = false
                         capture =
                             ImageCapture.Builder()
+                                .setTargetRotation(view.display?.rotation ?: Surface.ROTATION_0)
                                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                                 .setJpegQuality(100)
                                 .build()
@@ -349,8 +418,10 @@ class MainActivity : ComponentActivity() {
                                 android.hardware.camera2.CameraCharacteristics
                                     .REQUEST_AVAILABLE_CAPABILITIES_RAW
                             ) == true
-                    capabilities.text =
-                        "ID ${camera2.cameraId} · 闪光 ${info.hasFlashUnit()} · RAW 硬件 $raw\n当前采集：${if(rawActive)"RAW + JPEG" else "JPEG"} · RAW 同拍 $rawSupported。第三方采集不等同系统相机 HDR。"
+                    capabilityText =
+                        "摄像头编号：${camera2.cameraId}\n闪光灯：${if(info.hasFlashUnit())"支持" else "不支持"}\n原始感光数据：${if(raw)"硬件支持" else "硬件不支持"}\n原始数据与照片同拍：${if(rawSupported)"支持" else "不支持"}\n当前格式：${if(rawActive)"原始数据 + 高画质照片" else "高画质照片"}"
+                    layout.captureLabel.text = if (rawActive) "原始数据 + 高画质照片" else "高画质拍摄 · 原图始终保留"
+                    layout.ready()
                     val range = info.exposureState.exposureCompensationRange
                     seek.max = range.upper - range.lower
                     seek.progress = -range.lower
@@ -367,12 +438,13 @@ class MainActivity : ComponentActivity() {
                                         .cameraControl
                                         .setExposureCompensationIndex(v + range.lower)
                                     ev.text =
-                                        "曝光补偿 ${(v+range.lower)*info.exposureState.exposureCompensationStep.toFloat()} EV"
+                                        "曝光补偿 ${(v+range.lower)*info.exposureState.exposureCompensationStep.toFloat()} 档"
                                 }
                             }
                         }
                     )
                 } catch (e: Exception) {
+                    layout.status("相机连接失败，可打开相册或在设置中重试。")
                     error(e)
                 }
             },
@@ -380,10 +452,51 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun cameraSettings(grid: GridOverlay) {
+        val body = column().apply { setPadding(24.dp(), 8.dp(), 24.dp(), 8.dp()) }
+        fun toggle(label: String, checked: Boolean, action: (Boolean) -> Unit) {
+            body.addView(
+                Switch(this).apply {
+                    text = label
+                    setTextColor(LabUi.foreground)
+                    textSize = 14f
+                    minHeight = 52.dp()
+                    isChecked = checked
+                    setOnCheckedChangeListener { _, v -> action(v) }
+                }
+            )
+        }
+        toggle("构图网格", grid.gridVisible) {
+            grid.gridVisible = it
+            grid.invalidate()
+            preferences.edit().putBoolean("grid", it).apply()
+        }
+        toggle("显示曝光补偿", preferences.getBoolean("exposure", false)) {
+            preferences.edit().putBoolean("exposure", it).apply()
+            cameraLayout?.exposurePanel?.visibility = if (it) View.VISIBLE else View.GONE
+        }
+        toggle("同时保存原始感光数据（设备支持时）", rawRequested) {
+            rawRequested = it
+            preferences.edit().putBoolean("raw", it).apply()
+        }
+        toggle("导出时移除定位信息", preferences.getBoolean("stripGps", false)) {
+            preferences.edit().putBoolean("stripGps", it).apply()
+        }
+        body.addView(text("设备能力", 13f).apply { setTextColor(LabUi.accent) })
+        body.addView(text(capabilityText, 12f))
+        body.addView(text("画幅选择采用无损参数裁切，原图始终保留。照片保存在应用相册内；一键导出可另存到系统文件。", 12f))
+        AlertDialog.Builder(this)
+            .setTitle("相机设置")
+            .setView(body)
+            .setPositiveButton("完成") { _, _ -> cameraPage() }
+            .show()
+    }
+
     private fun shoot() {
         val output = capture ?: return
         val target = store.newCapture()
         busy = true
+        cameraLayout?.status("正在拍摄")
         val formats = mutableSetOf<Int>()
         var finished = false
         val callback =
@@ -467,91 +580,115 @@ class MainActivity : ComponentActivity() {
         folder = target
         doc = store.parameters(target)
         history = EditHistory(doc, File(target, "history.json").takeIf { it.exists() }?.readText())
-        page("G23 Lab / Editor")
+        page("Editor")
         val view = PhotoView(this)
         photo = view
         root.addView(
-            row(
-                button("返回") { datasetPage() },
-                button("对比") {
-                    view.compare = !view.compare
-                    view.invalidate()
-                },
-                button("撤销") {
-                    doc = history!!.undo()
-                    changed(false)
-                    controls()
-                },
-                button("重做") {
-                    doc = history!!.redo()
-                    changed(false)
-                    controls()
-                },
-                button("重置") {
-                    doc = store.defaults()
-                    changed()
-                    controls()
-                },
+            LabUi.header(
+                this,
+                "影像调色",
+                target.name.take(23),
+                { datasetPage() },
+                LabUi.iconButton(this, LabIcon.Kind.EXPORT, "一键导出") { exportFiles(listOf(target)) },
             )
         )
-        root.addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(text("${target.name.take(16)} · 预览长边 640px · 双指缩放 / 拖动 · 长按原图 · 对比分割线", 11f))
-        val categories = arrayOf("基础", "HSL", "曲线", "分级", "质感", "裁切")
-        val spinner =
-            Spinner(this).apply {
-                adapter =
-                    ArrayAdapter(
-                        this@MainActivity,
-                        android.R.layout.simple_spinner_dropdown_item,
-                        categories,
-                    )
-                setSelection(categories.indexOf(category).coerceAtLeast(0))
-                onItemSelectedListener =
-                    object : AdapterView.OnItemSelectedListener {
-                        override fun onNothingSelected(p: AdapterView<*>?) {}
-
-                        override fun onItemSelected(
-                            p: AdapterView<*>?,
-                            v: View?,
-                            position: Int,
-                            id: Long,
-                        ) {
-                            category = categories[position]
-                            controls()
-                        }
-                    }
-            }
-        root.addView(spinner)
-        val scroll = ScrollView(this)
-        val controls = column()
-        editorControls = controls
-        scroll.addView(controls)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 230.dp()))
-        val data = text("▸ 参数与样本记录（点击展开）", 12f)
-        panel = data
-        var expanded = false
-        data.setOnClickListener {
-            expanded = !expanded
-            data.text =
-                if (expanded) store.metadata(target).toString(2) + "\n" + doc.toString(2)
-                else "▸ 参数与样本记录（点击展开）"
+        val tools = LabUi.row(this)
+        fun tool(kind: LabIcon.Kind, label: String, action: () -> Unit) {
+            tools.addView(
+                LabUi.iconButton(this, kind, label) { if (!busy) action() },
+                LinearLayout.LayoutParams(0, 44.dp(), 1f),
+            )
         }
-        val dataScroll = ScrollView(this)
-        dataScroll.addView(data)
-        root.addView(dataScroll, LinearLayout.LayoutParams(-1, 65.dp()))
+        tool(LabIcon.Kind.UNDO, "撤销") {
+            doc = history!!.undo()
+            changed(false)
+            controls()
+        }
+        tool(LabIcon.Kind.REDO, "重做") {
+            doc = history!!.redo()
+            changed(false)
+            controls()
+        }
+        tool(LabIcon.Kind.RESET, "重置调色") {
+            doc = store.defaults()
+            changed()
+            controls()
+        }
+        tool(LabIcon.Kind.COMPARE, "切换并列与滑动对比") {
+            view.compare = !view.compare
+            view.invalidate()
+        }
+        tool(LabIcon.Kind.DATA, "并列数据") { showData(target, JSONObject(doc.toString())) }
+        root.addView(tools)
+        root.addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(
-            row(
-                button("复制 JSON") {
-                    (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(
-                        ClipData.newPlainText("G23 parameters", doc.toString(2))
-                    )
-                    Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
-                },
-                button("标签 / 评分") { sceneDialog(target) },
-                button("预设") { presets() },
-            )
+            LabUi.label(this, "双指缩放 · 拖动查看 · 长按原图").apply {
+                gravity = Gravity.CENTER
+                setPadding(0, 6.dp(), 0, 6.dp())
+            }
         )
-        root.addView(row(button("保存草稿成片") { save(false) }, button("保存为 G23 训练样本") { save(true) }))
+        val categories = listOf("基础", "分色", "曲线", "分级", "质感", "裁切")
+        val tabs = LabUi.row(this)
+        fun updateTabs() {
+            for (i in 0 until tabs.childCount) (tabs.getChildAt(i) as TextView).setTextColor(
+                if (categories[i] == category) LabUi.accent else LabUi.muted
+            )
+        }
+        categories.forEach { item ->
+            tabs.addView(
+                LabUi.text(this, item, 13f).apply {
+                    gravity = Gravity.CENTER
+                    setOnClickListener {
+                        category = item
+                        updateTabs()
+                        controls()
+                    }
+                },
+                LinearLayout.LayoutParams(0, 44.dp(), 1f),
+            )
+        }
+        root.addView(tabs)
+        updateTabs()
+        val scroll =
+            ScrollView(this).apply {
+                isFillViewport = false
+                background = LabUi.shape(LabUi.surface, 16.dp())
+                clipToOutline = true
+            }
+        editorControls = column().apply { setPadding(16.dp(), 8.dp(), 16.dp(), 12.dp()) }
+        scroll.addView(editorControls)
+        root.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                -1,
+                (resources.configuration.screenHeightDp * .18f).toInt().coerceIn(96, 144).dp(),
+            ),
+        )
+        val actions = LabUi.row(this)
+        fun contextAction(label: String, action: () -> Unit) {
+            actions.addView(
+                LabUi.text(this, label, 13f, LabUi.muted).apply {
+                    gravity = Gravity.CENTER
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { if (!busy) action() }
+                },
+                LinearLayout.LayoutParams(0, 44.dp(), 1f),
+            )
+        }
+        contextAction("预设") { presets() }
+        contextAction("标签") { sceneDialog(target) }
+        contextAction("并列数据") { showData(target, JSONObject(doc.toString())) }
+        root.addView(actions)
+        val saveButton = button("保存成片") { save(false) }
+        saveButton.setOnLongClickListener {
+            if (!busy) save(true)
+            true
+        }
+        saveButton.contentDescription = "保存成片；长按确认为训练样本"
+        root.addView(
+            row(saveButton, LabUi.button(this, "一键导出", true) { exportFiles(listOf(target)) })
+        )
         controls()
         val token = generation.get()
         worker.execute {
@@ -643,7 +780,8 @@ class MainActivity : ComponentActivity() {
         scale: Double = 1.0,
     ) {
         val (obj, key) = field(path)
-        val label = text("$path  ${obj.getDouble(key)}", 12f)
+        val label =
+            text("${ParameterLabels.name(path)}  ${ParameterLabels.value(obj.get(key))}", 12f)
         parent.addView(label)
         val s = SeekBar(this)
         s.max = max - min
@@ -657,7 +795,8 @@ class MainActivity : ComponentActivity() {
                     if (user && !busy) {
                         val number = (value + min) * scale
                         obj.put(key, number)
-                        label.text = "$path  $number"
+                        label.text =
+                            "${ParameterLabels.name(path)}  ${ParameterLabels.value(number)}"
                         requestRender()
                     }
                 }
@@ -702,7 +841,7 @@ class MainActivity : ComponentActivity() {
                     )
                     .forEach { slider(p, it) }
             }
-            "HSL" ->
+            "分色" ->
                 listOf("red", "orange", "yellow", "green", "cyan", "blue", "purple", "magenta")
                     .forEach { c ->
                         listOf("hue", "saturation", "luminance").forEach { slider(p, "hsl.$c.$it") }
@@ -710,7 +849,7 @@ class MainActivity : ComponentActivity() {
             "曲线" -> {
                 p.addView(text("点击添加，拖动控制点；长按删除内部点。"))
                 listOf("rgb", "red", "green", "blue").forEach { channel ->
-                    p.addView(text(channel))
+                    p.addView(text(ParameterLabels.name(channel)))
                     val curves = doc.getJSONObject("parameters").getJSONObject("tone_curves")
                     val curve =
                         CurveView(this, curves.getJSONArray(channel)) { points ->
@@ -719,7 +858,7 @@ class MainActivity : ComponentActivity() {
                         }
                     p.addView(curve, LinearLayout.LayoutParams(-1, 180.dp()))
                     p.addView(
-                        button("重置 $channel") {
+                        button("重置${ParameterLabels.name(channel)}") {
                             curves.put(channel, JSONArray("[[0,0],[1,1]]"))
                             changed()
                             controls()
@@ -793,7 +932,7 @@ class MainActivity : ComponentActivity() {
                     }
                 )
                 p.addView(
-                    button("裁切坐标 [left,top,right,bottom]") {
+                    button("裁切范围：左、上、右、下") {
                         val input =
                             EditText(this).apply {
                                 setText(
@@ -976,202 +1115,309 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
+    private fun showData(target: File, snapshot: JSONObject) {
+        val before = store.originalParameters(target)
+        val analysis =
+            runCatching {
+                    store.comparison(target)?.also {
+                        AnalysisData.validate(it, target.name, before, snapshot)
+                    }
+                }
+                .getOrNull()
+        val body = column()
+        val panel =
+            ComparisonPanel.create(
+                this,
+                target.name,
+                store.metadata(target).getJSONObject("capture"),
+                before,
+                snapshot,
+                analysis,
+            )
+        body.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
+        val actions =
+            row(
+                button("复制参数") {
+                    (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(
+                        ClipData.newPlainText(
+                            "并列参数",
+                            ParameterLabels.pairs(before, snapshot).toString(2),
+                        )
+                    )
+                    Toast.makeText(this, "已复制原始与调色参数", Toast.LENGTH_SHORT).show()
+                },
+                button("保存分析文件") { exportFiles(listOf(target), true) },
+            )
+        actions.setPadding(16.dp(), 8.dp(), 16.dp(), 16.dp())
+        body.addView(actions)
+        val dialog =
+            AlertDialog.Builder(this)
+                .setTitle("原图与调色数据")
+                .setView(body)
+                .setPositiveButton("关闭", null)
+                .create()
+        dialog.show()
+        dialog.window?.setLayout(-1, (resources.displayMetrics.heightPixels * .88).toInt())
+    }
+
+    private fun exportFiles(targets: List<File>, jsonOnly: Boolean = false) {
+        if (busy) return
+        if (targets.isEmpty()) {
+            message("当前没有可导出的照片，请先拍摄。")
+            return
+        }
+        val current = folder
+        val currentSnapshot = if (screen == "Editor") JSONObject(doc.toString()) else null
+        val removeGps = preferences.getBoolean("stripGps", false)
+        var output: File? = null
+        background(
+            "正在生成原图、成片与并列分析数据",
+            {
+                targets.forEach { target ->
+                    val snapshot =
+                        if (target == current && currentSnapshot != null) currentSnapshot
+                        else store.parameters(target)
+                    if (!store.isRendered(target, snapshot)) {
+                        val approved =
+                            store.metadata(target).getString("status") == "approved" &&
+                                canonicalJson(store.parameters(target)) == canonicalJson(snapshot)
+                        store.save(target, snapshot, approved)
+                    }
+                }
+                output =
+                    if (jsonOnly) {
+                        val target = targets.single()
+                        val directory = File(cacheDir, "exports").apply { mkdirs() }
+                        File(directory, "${target.name}_analysis.json").apply {
+                            writeText(
+                                store
+                                    .comparison(target)!!
+                                    .put("metadata", store.metadata(target))
+                                    .toString(2)
+                            )
+                        }
+                    } else DatasetExport.export(store, targets, false, removeGps) { _, _ -> }
+            },
+        ) {
+            pendingExport = output
+            if (jsonOnly) saveAnalysis.launch(output!!.name)
+            else saveArchive.launch("G23_影像分析_${targets.size}张.zip")
+        }
+    }
+
     private fun datasetPage() {
         provider?.unbindAll()
         leaveEditor()
-        page("G23 Lab / Dataset")
-        nav()
+        page("Dataset")
         val selected = mutableSetOf<File>()
-        val status =
-            Spinner(this).apply {
-                adapter =
-                    ArrayAdapter(
-                        this@MainActivity,
-                        android.R.layout.simple_spinner_dropdown_item,
-                        arrayOf("all", "approved", "draft"),
-                    )
-            }
-        root.addView(status)
-        val filter =
-            EditText(this).apply {
-                hint = "场景 / 内容标签"
-                setTextColor(Color.WHITE)
-            }
-        root.addView(filter)
-        val deviceFilter =
-            EditText(this).apply {
-                hint = "设备型号"
-                setTextColor(Color.WHITE)
-            }
-        val dateFilter =
-            EditText(this).apply {
-                hint = "拍摄日期 YYYY-MM-DD（可填年月前缀）"
-                setTextColor(Color.WHITE)
-            }
-        root.addView(deviceFilter)
-        root.addView(dateFilter)
-        val grid = GridLayout(this).apply { columnCount = 2 }
-        val scroll = ScrollView(this)
-        scroll.addView(grid)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        var filterStatus = "all"
+        var scene = ""
+        var device = ""
+        var date = ""
         var pageIndex = 0
-        val pageLabel = text("")
+        var refreshToken = 0
+        val list = column()
+        val count = LabUi.label(this, "")
+        val selection = LabUi.label(this, "")
+        val thumbs = mutableListOf<Bitmap>()
         fun matching() =
             store.all().filter {
                 val m = store.metadata(it)
-                (status.selectedItem == "all" || m.getString("status") == status.selectedItem) &&
-                    m.getJSONObject("scene")
-                        .toString()
-                        .contains(filter.text.toString(), ignoreCase = true) &&
-                    m.getJSONObject("capture")
-                        .optString("device_model")
-                        .contains(deviceFilter.text.toString(), ignoreCase = true) &&
-                    m.getJSONObject("capture")
-                        .optString("captured_at")
-                        .startsWith(dateFilter.text.toString())
+                (filterStatus == "all" || m.getString("status") == filterStatus) &&
+                    m.getJSONObject("scene").toString().contains(scene, true) &&
+                    m.getJSONObject("capture").optString("device_model").contains(device, true) &&
+                    m.getJSONObject("capture").optString("captured_at").startsWith(date)
             }
-
+        fun selectedCount() {
+            selection.text = if (selected.isEmpty()) "未勾选时导出当前筛选结果" else "已选择 ${selected.size} 张照片"
+        }
         fun refresh(reset: Boolean = true) {
             if (reset) {
                 selected.clear()
                 pageIndex = 0
             }
-            grid.removeAllViews()
+            selectedCount()
+            refreshToken++
+            val token = refreshToken
+            list.removeAllViews()
+            thumbs.forEach { it.recycle() }
+            thumbs.clear()
             val matches = matching()
-            val pages = maxOf(1, (matches.size + 35) / 36)
+            val pages = maxOf(1, (matches.size + 11) / 12)
             pageIndex = pageIndex.coerceIn(0, pages - 1)
-            pageLabel.text = "${pageIndex+1} / $pages · ${matches.size} 条 · 已选 ${selected.size}"
-            matches.drop(pageIndex * 36).take(36).forEach { target ->
-                val meta = store.metadata(target)
-                val cell = column()
-                val thumbnail =
-                    File(target, "thumbnail_after.jpg").takeIf { it.exists() }
-                        ?: File(target, "original.jpg")
-                val bitmap =
-                    if (thumbnail.name == "original.jpg") Imaging.decode(thumbnail, 240)
-                    else BitmapFactory.decodeFile(thumbnail.path)
-                val image =
-                    ImageView(this).apply {
-                        setImageBitmap(bitmap)
-                        scaleType = ImageView.ScaleType.CENTER_CROP
+            count.text = "${matches.size} 张照片 · 第 ${pageIndex+1} / $pages 页"
+            if (matches.isEmpty()) {
+                list.addView(
+                    text("还没有照片\n点击左上角返回相机，开始记录。", 16f).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(0, 80.dp(), 0, 80.dp())
                     }
-                cell.addView(image, LinearLayout.LayoutParams(-1, 110.dp()))
+                )
+            }
+            matches.drop(pageIndex * 12).take(12).forEach { target ->
+                val meta = store.metadata(target)
+                val card =
+                    column().apply {
+                        background = LabUi.shape(LabUi.surface, 16.dp())
+                        setPadding(12.dp(), 10.dp(), 12.dp(), 12.dp())
+                    }
                 val check =
                     CheckBox(this).apply {
-                        text = "${target.name.take(12)}\n${meta.getString("status")}"
+                        text =
+                            "${meta.getJSONObject("capture").optString("captured_at").take(19).replace('T',' ')} · ${if(meta.getString("status")=="approved")"已确认" else "草稿"}"
+                        textSize = 12f
+                        setTextColor(LabUi.muted)
                         isChecked = selected.contains(target)
-                        setTextColor(Color.WHITE)
                         setOnCheckedChangeListener { _, checked ->
                             if (checked) selected.add(target) else selected.remove(target)
+                            selectedCount()
                         }
                     }
-                cell.addView(check)
-                cell.addView(
-                    row(
-                        button("编辑") { openEditor(target) },
-                        button("对照") {
-                            val pair = column()
-                            listOf("original.jpg", "edited.png").forEach { n ->
-                                if (File(target, n).exists()) {
-                                    val v = ImageView(this)
-                                    v.setImageBitmap(Imaging.decode(File(target, n), 640))
-                                    v.adjustViewBounds = true
-                                    pair.addView(v)
+                card.addView(check)
+                val images = LabUi.row(this)
+                listOf("原图" to "thumbnail_before.jpg", "调色后" to "thumbnail_after.jpg").forEach {
+                    (label, name) ->
+                    val half = column()
+                    half.addView(
+                        LabUi.label(this, if (label == "调色后") "调色后 · 已保存" else label).apply {
+                            setPadding(0, 0, 0, 6.dp())
+                        }
+                    )
+                    val frame =
+                        FrameLayout(this).apply {
+                            background = LabUi.shape(LabUi.raised, 10.dp())
+                            clipToOutline = true
+                        }
+                    val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+                    frame.addView(iv, FrameLayout.LayoutParams(-1, -1))
+                    half.addView(frame, LinearLayout.LayoutParams(-1, 140.dp()))
+                    val file =
+                        File(target, name).takeIf { it.isFile }
+                            ?: if (label == "原图") File(target, "original.jpg") else null
+                    if (file == null)
+                        frame.addView(
+                            LabUi.text(this, "待调色", 12f, LabUi.muted).apply {
+                                gravity = Gravity.CENTER
+                            },
+                            FrameLayout.LayoutParams(-1, -1),
+                        )
+                    else
+                        worker.execute {
+                            runCatching { Imaging.decode(file, 320) }
+                                .onSuccess { b ->
+                                    runOnUiThread {
+                                        if (
+                                            screen == "Dataset" &&
+                                                token == refreshToken &&
+                                                iv.isAttachedToWindow
+                                        ) {
+                                            thumbs.add(b)
+                                            iv.setImageBitmap(b)
+                                        } else b.recycle()
+                                    }
                                 }
-                            }
-                            AlertDialog.Builder(this)
-                                .setView(pair)
-                                .setPositiveButton("关闭", null)
-                                .show()
+                        }
+                    images.addView(
+                        half,
+                        LinearLayout.LayoutParams(0, -2, 1f).apply {
+                            if (label == "调色后") marginStart = 8.dp()
                         },
                     )
+                }
+                card.addView(images)
+                card.addView(
+                    row(
+                            button("继续调色") { openEditor(target) },
+                            button("并列数据") { showData(target, store.parameters(target)) },
+                        )
+                        .apply { setPadding(0, 10.dp(), 0, 0) }
                 )
-                grid.addView(
-                    cell,
-                    GridLayout.LayoutParams().apply {
-                        width = resources.displayMetrics.widthPixels / 2 - 24
-                        height = ViewGroup.LayoutParams.WRAP_CONTENT
-                    },
+                list.addView(
+                    card,
+                    LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12.dp() },
                 )
             }
         }
-        root.addView(
-            row(
-                button("筛选 / 刷新") { refresh() },
-                button("全选筛选结果") {
-                    selected.addAll(matching())
-                    for (i in 0 until grid.childCount) {
-                        val cell = grid.getChildAt(i) as LinearLayout
-                        (cell.getChildAt(1) as CheckBox).isChecked = true
+        val filterAction =
+            LabUi.iconButton(this, LabIcon.Kind.FILTER, "筛选与管理") {
+                val form = column().apply { setPadding(20.dp(), 8.dp(), 20.dp(), 8.dp()) }
+                val status =
+                    Spinner(this).apply {
+                        adapter =
+                            ArrayAdapter(
+                                this@MainActivity,
+                                android.R.layout.simple_spinner_dropdown_item,
+                                arrayOf("全部照片", "已确认样本", "草稿"),
+                            )
+                        setSelection(listOf("all", "approved", "draft").indexOf(filterStatus))
                     }
-                },
-                button("删除所选") {
-                    AlertDialog.Builder(this)
-                        .setMessage("永久删除所选 ${selected.size} 条样本及原图？")
-                        .setPositiveButton("删除") { _, _ ->
-                            selected.toList().forEach { it.deleteRecursively() }
-                            refresh()
-                        }
-                        .setNegativeButton("取消", null)
-                        .show()
-                },
-            )
-        )
+                val sf = LabUi.field(this, "场景或内容标签", scene)
+                val df = LabUi.field(this, "设备型号", device)
+                val tf = LabUi.field(this, "日期，例如 2026-10", date)
+                form.addView(status)
+                form.addView(sf)
+                form.addView(df)
+                form.addView(tf)
+                form.addView(
+                    button("全选当前筛选结果") {
+                        selected.addAll(matching())
+                        refresh(false)
+                    }
+                )
+                form.addView(
+                    button("删除已选照片") {
+                        if (selected.isNotEmpty())
+                            AlertDialog.Builder(this)
+                                .setMessage("永久删除已选 ${selected.size} 张照片及其数据？")
+                                .setNegativeButton("取消", null)
+                                .setPositiveButton("删除") { _, _ ->
+                                    selected.toList().forEach { it.deleteRecursively() }
+                                    refresh()
+                                }
+                                .show()
+                    }
+                )
+                AlertDialog.Builder(this)
+                    .setTitle("筛选与管理")
+                    .setView(form)
+                    .setPositiveButton("应用") { _, _ ->
+                        filterStatus =
+                            listOf("all", "approved", "draft")[status.selectedItemPosition]
+                        scene = sf.text.toString()
+                        device = df.text.toString()
+                        date = tf.text.toString()
+                        refresh()
+                    }
+                    .setNegativeButton("关闭", null)
+                    .show()
+            }
+        root.addView(LabUi.header(this, "影像相册", "原图与调色结果并列保存", { cameraPage() }, filterAction))
+        root.addView(count)
+        val scroll = ScrollView(this)
+        scroll.addView(list)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(
             row(
-                button("上一页") {
-                    pageIndex--
-                    refresh(false)
-                },
-                pageLabel,
-                button("下一页") {
-                    pageIndex++
-                    refresh(false)
-                },
-            )
-        )
-        val approved =
-            CheckBox(this).apply {
-                text = "仅导出 approved"
-                isChecked = true
-                setTextColor(Color.WHITE)
-            }
-        val gps =
-            CheckBox(this).apply {
-                text = "导出时移除 GPS（本机原图不变）"
-                isChecked = true
-                setTextColor(Color.WHITE)
-            }
-        root.addView(approved)
-        root.addView(gps)
-        val progress = text("")
-        root.addView(progress)
-        root.addView(
-            button("导出所选 ZIP / 系统分享") {
-                val targets = selected.toList()
-                val onlyApproved = approved.isChecked
-                val removeGps = gps.isChecked
-                var output: File? = null
-                background(
-                    "正在校验及导出；进度见页面…",
-                    {
-                        output =
-                            DatasetExport.export(store, targets, onlyApproved, removeGps) { n, t ->
-                                runOnUiThread { progress.text = "导出 $n / $t" }
-                            }
+                    button("上一页") {
+                        pageIndex--
+                        refresh(false)
                     },
-                ) {
-                    val uri = FileProvider.getUriForFile(this, "$packageName.files", output!!)
-                    startActivity(
-                        Intent.createChooser(
-                            Intent(Intent.ACTION_SEND)
-                                .setType("application/zip")
-                                .putExtra(Intent.EXTRA_STREAM, uri)
-                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                            "保存 / 分享 G23 数据集",
-                        )
-                    )
-                }
+                    button("下一页") {
+                        pageIndex++
+                        refresh(false)
+                    },
+                )
+                .apply { setPadding(0, 4.dp(), 0, 4.dp()) }
+        )
+        root.addView(
+            selection.apply {
+                gravity = Gravity.CENTER
+                setPadding(0, 6.dp(), 0, 8.dp())
+            }
+        )
+        root.addView(
+            LabUi.button(this, "一键导出 · 保存到文件", true) {
+                exportFiles(if (selected.isEmpty()) matching() else selected.toList())
             }
         )
         refresh()

@@ -44,3 +44,9 @@ ctest --test-dir .build/cmake --output-on-failure
 ```
 
 测试图片是程序生成的编解码测试夹具，仅用于图像算法和文件协议验证，不作为已完成真实相机拍摄的证据。手机真实拍摄测试需要设备。
+
+## 0.2 界面测试
+
+`testDebugUnitTest` 包含 Robolectric 4.14.1 / API 35 原生图形测试，Gradle 解析固定的 Android instrumented SDK 后复制到 `android/app/build/robolectric-sdks`。测试离线读取该目录，缓存位于工作区，不重定向用户 HOME。`android/app/build/reports/ui/camera.png` 是空取景框的原生布局测试渲染；测试不会连接真实摄像头。
+
+调试包 0.2.0 / versionCode 2 使用与 0.1 相同的当前开发签名。可以尝试 `adb install -r` 升级；签名、包名不一致时系统会拒绝覆盖。不要为了升级而先卸载未导出的照片。

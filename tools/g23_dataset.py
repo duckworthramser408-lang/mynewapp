@@ -87,6 +87,32 @@ def safe_file(root, relative):
     if not target.is_file(): raise ValueError(f'missing file: {relative}')
     return target
 
+def parameter_values(value, prefix=''):
+    result = {}
+    for key, item in value.items():
+        path = f'{prefix}.{key}' if prefix else key
+        if isinstance(item, dict): result.update(parameter_values(item, path))
+        else: result[path] = item
+    return result
+
+def validate_comparison(folder, sid, params):
+    before = validate_parameters(read_json(safe_file(folder, 'original_parameters.json')))
+    if before != read_json(DEFAULT): raise ValueError('original parameter baseline is not neutral')
+    comparison = read_json(safe_file(folder, 'comparison.json'))
+    if comparison.get('analysis_schema_version') != '1.0' or comparison.get('sample_id') != sid or comparison.get('render_pipeline_version') != PIPELINE:
+        raise ValueError('comparison ID/version mismatch')
+    if comparison['before']['parameters'] != before or comparison['after']['parameters'] != params:
+        raise ValueError('comparison parameter snapshot mismatch')
+    original = parameter_values(before['parameters']); edited = parameter_values(params['parameters'])
+    pairs = comparison['parameter_pairs']
+    if len(pairs) != len(original) or len({p['parameter'] for p in pairs}) != len(original):
+        raise ValueError('comparison parameter coverage mismatch')
+    for pair in pairs:
+        key = pair['parameter']
+        if key not in original or pair['before'] != original[key] or pair['after'] != edited[key]:
+            raise ValueError('comparison parameter pair mismatch')
+    return comparison
+
 def inspect_sample(folder):
     if not folder.is_dir() or folder.is_symlink(): raise ValueError('invalid sample directory')
     meta = read_json(safe_file(folder, 'metadata.json'))
@@ -99,6 +125,10 @@ def inspect_sample(folder):
     hashes = meta.get('sha256',{})
     names = list(REQUIRED)
     if (folder/'original.dng').is_file(): names.append('original.dng')
+    sidecars = ('original_parameters.json', 'comparison.json')
+    if any((folder/n).exists() or n in hashes for n in sidecars):
+        names.extend(sidecars)
+        validate_comparison(folder, sid, params)
     for n in names:
         file = safe_file(folder,n)
         if n != 'metadata.json' and (n not in hashes or sha256(file) != hashes[n]): raise ValueError(f'{sid}: checksum missing/mismatch: {n}')
@@ -128,7 +158,7 @@ def export_dataset(source, destination, approved_only=True, progress=lambda done
     if not selected: raise ValueError('no matching samples')
     destination.parent.mkdir(parents=True,exist_ok=True)
     fd,tmp=tempfile.mkstemp(prefix='.g23-',suffix='.zip',dir=destination.parent);os.close(fd)
-    rows=[]; summary=[]; hashes={}; prefix='G23_Dataset_Export/'
+    rows=[]; summary=[]; paired=[]; hashes={}; prefix='G23_Dataset_Export/'
     try:
         with zipfile.ZipFile(tmp,'w',compression=zipfile.ZIP_DEFLATED,allowZip64=True) as z:
             for i,(folder,meta,params,names) in enumerate(selected):
@@ -145,11 +175,21 @@ def export_dataset(source, destination, approved_only=True, progress=lambda done
                         hashes[rel+name]=digest.hexdigest()
                         if hashes[rel+name]!=meta['sha256'][name]:raise ValueError('source changed during export')
                 rows.append({'sample_id':sid,'original':rel+'original.jpg','edited':rel+'edited.png','parameters':rel+'parameters.json','metadata':rel+'metadata.json','scene':meta['scene'],'device_model':meta['capture'].get('device_model'),'rating':meta['scene'].get('rating'),'approved':meta['status']=='approved','render_pipeline_version':PIPELINE})
+                if 'comparison.json' in names:
+                    rows[-1].update(original_parameters=rel+'original_parameters.json', comparison=rel+'comparison.json')
+                    comparison=read_json(folder/'comparison.json')
+                    paired.extend({'sample_id':sid, 'parameter':p['parameter'], 'label':p['label'],
+                                   'before':json.dumps(p['before'],ensure_ascii=False,separators=(',',':')),
+                                   'after':json.dumps(p['after'],ensure_ascii=False,separators=(',',':'))} for p in comparison['parameter_pairs'])
                 summary.append({'sample_id':sid,**flatten(params['parameters']),'curves_file':rel+'parameters.json'})
                 progress(i+1,len(selected))
             z.writestr(prefix+'dataset.jsonl',''.join(json.dumps(row,ensure_ascii=False,allow_nan=False)+'\n' for row in rows))
             stream=io.StringIO(newline='');writer=csv.DictWriter(stream,fieldnames=list(summary[0]));writer.writeheader();writer.writerows(summary)
             z.writestr(prefix+'reports/parameters_summary.csv',stream.getvalue())
+            if paired:
+                stream=io.StringIO(newline=''); writer=csv.DictWriter(stream,fieldnames=['sample_id','parameter','label','before','after'])
+                writer.writeheader();writer.writerows(paired)
+                z.writestr(prefix+'reports/before_after_parameters.csv',stream.getvalue())
             z.writestr(prefix+'reports/dataset_summary.json',json.dumps({'count':len(rows),'approved':sum(r['approved'] for r in rows),'pipeline':PIPELINE}))
             z.writestr(prefix+'manifest.json',json.dumps({'schema_version':VERSION,'sample_count':len(rows),'sha256':hashes},indent=2))
             z.writestr(prefix+'README.md','# G23 Dataset\nSDR sRGB, original captures retained. Final labels only; history excluded.\nVerify manifest hashes before training. No AI model is included.\n')
@@ -188,9 +228,20 @@ def analyze(root, output):
         # Relative references to files, no image Base64 and no image decode required.
         before=os.path.relpath(safe_file(root,row['original']),Path(output).parent)
         after=os.path.relpath(safe_file(root,row['edited']),Path(output).parent)
-        cards.append(f'<section><h2>{html.escape(row["sample_id"])}</h2><img src="{html.escape(before,quote=True)}"><img src="{html.escape(after,quote=True)}"></section>')
+        table=''
+        if 'comparison' in row or 'original_parameters' in row:
+            for key, name in [('comparison','comparison.json'),('original_parameters','original_parameters.json')]:
+                if row.get(key)!=expected_prefix+name or row[key] not in manifest['sha256']:
+                    raise ValueError('unverified comparison reference')
+                safe_file(root,row[key])
+            comparison=validate_comparison(root/expected_prefix,sid,params)
+            table='<details><summary>原始与调色参数</summary><table><tr><th>参数</th><th>原始</th><th>调色后</th></tr>'
+            for pair in comparison['parameter_pairs']:
+                table+='<tr>'+''.join('<td>'+html.escape(json.dumps(pair[k],ensure_ascii=False) if k!='label' else pair[k])+'</td>' for k in ('label','before','after'))+'</tr>'
+            table+='</table></details>'
+        cards.append(f'<section><h2>{html.escape(row["sample_id"])}</h2><div class="pair"><figure><figcaption>原图</figcaption><img src="{html.escape(before,quote=True)}"></figure><figure><figcaption>调色后</figcaption><img src="{html.escape(after,quote=True)}"></figure></div>{table}</section>')
     stats={k:{'min':min(v),'max':max(v),'mean':statistics.mean(v),'count':len(v)} for k,v in values.items()}
-    Path(output).write_text('<!doctype html><meta charset="utf-8"><title>G23 pairs</title><style>body{background:#141414;color:#ddd;font:14px sans-serif}img{width:45%;height:260px;object-fit:contain}</style>'+''.join(cards)+'<pre>'+html.escape(json.dumps(stats,indent=2))+'</pre>',encoding='utf-8')
+    Path(output).write_text('<!doctype html><meta charset="utf-8"><title>G23 pairs</title><style>body{background:#141414;color:#ddd;font:14px sans-serif}.pair{display:flex;gap:12px}figure{width:48%;margin:0}img{width:100%;height:260px;object-fit:contain}table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #444;text-align:left}summary{cursor:pointer;padding:16px 0}</style>'+''.join(cards)+'<pre>'+html.escape(json.dumps(stats,indent=2))+'</pre>',encoding='utf-8')
     return stats
 
 def analyze_zip(archive, report):

@@ -6,6 +6,7 @@ import device from '@ohos.deviceInfo';
 import { image } from '@kit.ImageKit';
 import { Metadata, Document, Capture, FileHash } from './Model';
 import { Imaging } from './Imaging';
+import { Comparison, Statistics } from './Analysis';
 
 export type Hashes = Record<string, string>;
 export class Store {
@@ -41,7 +42,7 @@ export class Store {
    meta.capture.equivalent_focal_length_35mm=this.numeric(await this.exif(source,image.PropertyKey.FOCAL_LENGTH_IN_35_MM_FILM));
    meta.capture.white_balance=await this.exif(source,image.PropertyKey.WHITE_BALANCE);
   } finally {await source.release();fs.closeSync(original);}
-  Store.text(folder+'/parameters.json',JSON.stringify(new Document()));Store.text(folder+'/metadata.json',JSON.stringify(meta));return folder;
+  Store.text(folder+'/parameters.json',JSON.stringify(new Document()));this.originalParams(folder);Store.text(folder+'/metadata.json',JSON.stringify(meta));return folder;
  }
  private numeric(raw: string | null): number | null {
   if(raw===null)return null;
@@ -55,6 +56,7 @@ export class Store {
  all(): string[] {return fs.listFileSync(this.root).filter((s: string) => s.startsWith('G23_') && fs.accessSync(this.root+'/'+s+'/metadata.json')).map((s: string) => this.root+'/'+s).sort().reverse();}
  meta(folder: string): Metadata {return JSON.parse(Store.read(folder+'/metadata.json')) as Metadata;}
  params(folder: string): Document {return JSON.parse(Store.read(folder+'/parameters.json')) as Document;}
+ originalParams(folder: string): Document {const path=folder+'/original_parameters.json';if(!fs.accessSync(path))Store.text(path,JSON.stringify(new Document()));return JSON.parse(Store.read(path)) as Document;}
  draft(folder: string,doc: Document,history: string): void {
   const m=this.meta(folder);m.status='draft';Store.text(folder+'/metadata.json',JSON.stringify(m));
   Store.text(folder+'/parameters.json',JSON.stringify(doc));Store.text(folder+'/history.json',history);
@@ -63,10 +65,15 @@ export class Store {
   const initial=this.meta(folder);initial.status='draft';Store.text(folder+'/metadata.json',JSON.stringify(initial));
   Store.text(folder+'/parameters.json',JSON.stringify(doc));
   const pixel=await Imaging.render(folder+'/original.jpg',doc);
-  try {await Imaging.encode(pixel,folder+'/edited.png.tmp');fs.renameSync(folder+'/edited.png.tmp',folder+'/edited.png');}finally{await pixel.release();}
-  await Imaging.thumbnail(folder+'/original.jpg',folder+'/thumbnail_before.jpg');
+  let after=new Statistics();
+  try {await Imaging.encode(pixel,folder+'/edited.png.tmp');fs.renameSync(folder+'/edited.png.tmp',folder+'/edited.png');after=await Statistics.compute(pixel);}finally{await pixel.release();}
+  const source=await Imaging.decode(folder+'/original.jpg');let before=new Statistics();
+  try{await Imaging.geometry(source,doc);before=await Statistics.compute(source);const info=await source.getImageInfo();await source.scale(Math.min(1,320/Math.max(info.size.width,info.size.height)),Math.min(1,320/Math.max(info.size.width,info.size.height)));await Imaging.encode(source,folder+'/thumbnail_before.jpg','image/jpeg');}finally{await source.release();}
   await Imaging.thumbnail(folder+'/edited.png',folder+'/thumbnail_after.jpg');
-  const hashes: Hashes={};hashes['original.jpg']=await Store.hash(folder+'/original.jpg');hashes['edited.png']=await Store.hash(folder+'/edited.png');hashes['thumbnail_before.jpg']=await Store.hash(folder+'/thumbnail_before.jpg');hashes['thumbnail_after.jpg']=await Store.hash(folder+'/thumbnail_after.jpg');hashes['parameters.json']=await Store.hash(folder+'/parameters.json');
+  const original=this.originalParams(folder);const comparison=new Comparison(initial.sample_id,initial.capture,original,doc,before,after);
+  Store.text(folder+'/comparison.json',JSON.stringify(comparison));
+  const hashes: Hashes={};
+  for(const name of ['original.jpg','edited.png','thumbnail_before.jpg','thumbnail_after.jpg','parameters.json','original_parameters.json','comparison.json'])hashes[name]=await Store.hash(folder+'/'+name);
   const meta=this.meta(folder);meta.sha256=hashes;meta.status=approved?'approved':'draft';Store.text(folder+'/metadata.json',JSON.stringify(meta));
  }
  async preset(name: string,doc: Document): Promise<void> {if(!name.trim() || name.length>80)throw new Error('名称需为 1–80 字符');Imaging.validate(doc);const path=this.context.filesDir+'/presets/'+encodeURIComponent(name)+'.json';Store.text(path,JSON.stringify(doc));}

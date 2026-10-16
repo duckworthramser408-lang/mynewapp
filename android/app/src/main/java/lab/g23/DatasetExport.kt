@@ -14,6 +14,8 @@ object DatasetExport {
             "thumbnail_before.jpg",
             "thumbnail_after.jpg",
             "parameters.json",
+            "original_parameters.json",
+            "comparison.json",
             "metadata.json",
         )
 
@@ -35,7 +37,7 @@ object DatasetExport {
             require(meta.getString("sample_id") == folder.name && ids.add(folder.name)) {
                 "样本 ID 重复或不匹配"
             }
-            val hashes = meta.getJSONObject("sha256")
+            val hashes = meta.optJSONObject("sha256") ?: error("此样本尚未保存成片，请先保存或使用一键导出自动生成。")
             (required +
                     if (File(folder, "original.dng").isFile) listOf("original.dng")
                     else emptyList())
@@ -47,6 +49,12 @@ object DatasetExport {
                 }
             require(originals.add(hashes.getString("original.jpg"))) { "重复原图，请选择独立拍摄样本" }
             val doc = store.parameters(folder)
+            AnalysisData.validate(
+                store.comparison(folder) ?: error("缺少并列分析数据，请重新保存样本"),
+                folder.name,
+                store.originalParameters(folder),
+                doc,
+            )
             require(
                 doc.getString("schema_version") == "1.0" &&
                     doc.getString("render_pipeline_version") == "1.0.0"
@@ -58,6 +66,7 @@ object DatasetExport {
         val manifest = JSONObject()
         val rows = mutableListOf<JSONObject>()
         val summaries = mutableListOf<LinkedHashMap<String, String>>()
+        val pairedRows = StringBuilder("sample_id,parameter,label,before,after\n")
         val prefix = "G23_Dataset_Export/"
         try {
             ZipOutputStream(temporary.outputStream().buffered()).use { zip ->
@@ -135,6 +144,8 @@ object DatasetExport {
                             .put("original", rel + "original.jpg")
                             .put("edited", rel + "edited.png")
                             .put("parameters", rel + "parameters.json")
+                            .put("original_parameters", rel + "original_parameters.json")
+                            .put("comparison", rel + "comparison.json")
                             .put("metadata", rel + "metadata.json")
                             .put("scene", meta.getJSONObject("scene"))
                             .put("device_model", meta.getJSONObject("capture").opt("device_model"))
@@ -142,12 +153,31 @@ object DatasetExport {
                             .put("approved", meta.getString("status") == "approved")
                             .put("render_pipeline_version", "1.0.0")
                     rows.add(row)
+                    val pairs = ParameterLabels.pairs(store.originalParameters(folder), params)
+                    fun quoted(v: Any?) = "\"" + (v?.toString() ?: "").replace("\"", "\"\"") + "\""
+                    for (i in 0 until pairs.length()) {
+                        val pair = pairs.getJSONObject(i)
+                        pairedRows
+                            .append(
+                                listOf(
+                                        folder.name,
+                                        pair.getString("parameter"),
+                                        pair.getString("label"),
+                                        pair.get("before"),
+                                        pair.get("after"),
+                                    )
+                                    .joinToString(",") { quoted(it) }
+                            )
+                            .append('\n')
+                    }
+
                     val csv = linkedMapOf("sample_id" to folder.name)
                     flatten(params.getJSONObject("parameters"), "", csv)
                     csv["curves_file"] = rel + "parameters.json"
                     summaries.add(csv)
                     progress(index + 1, selected.size)
                 }
+                text("reports/before_after_parameters.csv", pairedRows.toString())
                 text("dataset.jsonl", rows.joinToString("\n", postfix = "\n") { it.toString() })
                 fun escape(s: String) = "\"" + s.replace("\"", "\"\"") + "\""
                 val columns = summaries.first().keys

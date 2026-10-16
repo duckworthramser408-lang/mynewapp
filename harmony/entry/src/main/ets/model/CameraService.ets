@@ -53,7 +53,7 @@ export class CameraService {
    this.session.beginConfig();this.session.addInput(this.input);this.session.addOutput(this.preview);this.session.addOutput(this.output);
    await this.session.commitConfig();await this.session.start();
    this.flashAvailable=this.session.hasFlash();this.exposureRange=this.session.getExposureBiasRange();
-   this.capability=`${this.cameraId}\nJPEG ${photo.size.width}×${photo.size.height} · 闪光 ${this.flashAvailable}\nRAW 未启用；第三方 API 不等同系统相机 HDR。`;
+   this.capability=`摄像头编号：${this.cameraId}\n照片尺寸：${photo.size.width}×${photo.size.height}\n闪光灯：${this.flashAvailable?'支持':'不支持'}\n原始感光数据：未启用`;
   } catch(e) { await this.close();throw e; }
  }
  private reject(e: Error): void {if(this.timer>=0){clearTimeout(this.timer);this.timer=-1;}this.saving=false;this.failed?.(e);this.finish=undefined;this.failed=undefined;}

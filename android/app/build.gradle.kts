@@ -1,11 +1,16 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+val robolectricSdks by configurations.creating
+val prepareRobolectricSdk by tasks.registering(Copy::class) {
+ from(robolectricSdks)
+ into(layout.buildDirectory.dir("robolectric-sdks"))
+}
 android {
  namespace = "lab.g23"
  compileSdk = 35
  buildToolsVersion = "35.0.0"
  ndkVersion = "27.0.12077973"
  defaultConfig {
-  applicationId = "lab.g23"; minSdk = 28; targetSdk = 35; versionCode = 1; versionName = "0.1.0"
+  applicationId = "lab.g23"; minSdk = 28; targetSdk = 35; versionCode = 2; versionName = "0.2.0"
   externalNativeBuild { cmake { cppFlags += "-std=c++17"; arguments += listOf("-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON") } }
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
@@ -15,9 +20,20 @@ android {
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
  buildFeatures { buildConfig = true }
+ testOptions {
+  unitTests.isIncludeAndroidResources = true
+  unitTests.all { test ->
+   test.dependsOn(prepareRobolectricSdk)
+   test.systemProperty("robolectric.offline", "true")
+   test.systemProperty("robolectric.dependency.dir", layout.buildDirectory.dir("robolectric-sdks").get().asFile.absolutePath)
+  }
+ }
 }
 dependencies {
+ add(robolectricSdks.name,"org.robolectric:android-all-instrumented:15-robolectric-12650502-i7") { isTransitive=false }
  testImplementation("junit:junit:4.13.2")
+ testImplementation("org.robolectric:robolectric:4.14.1")
+ testImplementation("androidx.test:core:1.6.1")
  testImplementation("org.json:json:20240303")
  implementation("androidx.activity:activity-ktx:1.9.3")
  implementation("androidx.core:core-ktx:1.15.0")

@@ -23,3 +23,10 @@ class ProtocolTests(unittest.TestCase):
   expected=set(flatten(default['parameters']))-{'geometry.rotation_degrees'}
   code=(ROOT/'harmony/entry/src/main/ets/model/Model.ets').read_text()
   self.assertEqual(set(re.findall(r"new Control\('([^']+)'",code)),expected)
+ def test_harmony_comparison_covers_arrays_nulls_and_all_parameters(self):
+  from tools.g23_dataset import parameter_values
+  default=json.loads((ROOT/'protocol/default_parameters.json').read_text())
+  code=(ROOT/'harmony/entry/src/main/ets/model/Analysis.ets').read_text()
+  fields=re.findall(r"new ParameterPair\('([^']+)'",code)
+  self.assertEqual(len(fields),len(set(fields)))
+  self.assertEqual(set(fields),set(parameter_values(default['parameters'])))

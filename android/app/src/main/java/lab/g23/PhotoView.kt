@@ -8,7 +8,7 @@ import kotlin.math.min
 class PhotoView(context: Context) : View(context) {
     var before: Bitmap? = null
     var after: Bitmap? = null
-    var compare = false
+    var compare = false // false: paired view; true: sliding divider
     private var original = false
     private var scale = 1f
     private var dx = 0f
@@ -54,32 +54,50 @@ class PhotoView(context: Context) : View(context) {
         canvas.drawColor(Color.rgb(12, 13, 12))
         val image = if (original) before else after ?: before
         image ?: return
-        fun draw(b: Bitmap) {
-            val s = min(width.toFloat() / b.width, height.toFloat() / b.height) * scale
+        fun draw(b: Bitmap, bounds: RectF) {
+            canvas.save()
+            canvas.clipRect(bounds)
+            val s = min(bounds.width() / b.width, bounds.height() / b.height) * scale
             val w = b.width * s
             val h = b.height * s
             canvas.drawBitmap(
                 b,
                 null,
                 RectF(
-                    (width - w) / 2 + dx,
-                    (height - h) / 2 + dy,
-                    (width + w) / 2 + dx,
-                    (height + h) / 2 + dy,
+                    bounds.centerX() - w / 2 + dx,
+                    bounds.centerY() - h / 2 + dy,
+                    bounds.centerX() + w / 2 + dx,
+                    bounds.centerY() + h / 2 + dy,
                 ),
                 paint,
             )
-        }
-        draw(image)
-        if (compare && !original) {
-            canvas.save()
-            canvas.clipRect(0f, 0f, width * split, height.toFloat())
-            before?.let { draw(it) }
             canvas.restore()
-            paint.color = Color.WHITE
-            paint.strokeWidth = 2f
-            canvas.drawLine(width * split, 0f, width * split, height.toFloat(), paint)
         }
+        val top = context.resources.displayMetrics.density * 28
+        val full = RectF(0f, top, width.toFloat(), height.toFloat())
+        if (compare) {
+            draw(image, full)
+            if (!original) {
+                canvas.save()
+                canvas.clipRect(0f, top, width * split, height.toFloat())
+                before?.let { draw(it, full) }
+                canvas.restore()
+                paint.color = LabUi.foreground
+                paint.strokeWidth = 2f
+                canvas.drawLine(width * split, top, width * split, height.toFloat(), paint)
+            }
+        } else {
+            val gap = context.resources.displayMetrics.density * 8
+            before?.let { draw(it, RectF(0f, top, (width - gap) / 2, height.toFloat())) }
+            (if (original) before else after ?: before)?.let {
+                draw(it, RectF((width + gap) / 2, top, width.toFloat(), height.toFloat()))
+            }
+        }
+        paint.color = LabUi.muted
+        paint.textSize = context.resources.displayMetrics.scaledDensity * 11
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText("原图", width * .25f, top * .65f, paint)
+        canvas.drawText("调色后", width * .75f, top * .65f, paint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

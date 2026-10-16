@@ -174,7 +174,9 @@
           "edited.png",
           "thumbnail_before.jpg",
           "thumbnail_after.jpg",
-          "parameters.json"
+          "parameters.json",
+          "original_parameters.json",
+          "comparison.json"
         ]
       },
       "additionalProperties": {

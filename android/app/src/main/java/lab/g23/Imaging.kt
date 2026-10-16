@@ -80,6 +80,14 @@ object Imaging {
 
     fun render(source: Bitmap, doc: JSONObject): Bitmap {
         val input = geometry(source, doc)
+        try {
+            return renderPrepared(input, doc)
+        } finally {
+            if (input !== source) input.recycle()
+        }
+    }
+
+    fun renderPrepared(input: Bitmap, doc: JSONObject): Bitmap {
         val identity =
             JSONObject(doc.toString()).apply {
                 getJSONObject("parameters")
@@ -90,13 +98,11 @@ object Imaging {
         val output = Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888)
         try {
             NativeBridge.renderInto(input, output, identity.toString())
+            return output
         } catch (e: Throwable) {
             output.recycle()
             throw e
-        } finally {
-            if (input !== source) input.recycle()
         }
-        return output
     }
 
     fun captureInfo(file: File, cameraId: String): JSONObject {

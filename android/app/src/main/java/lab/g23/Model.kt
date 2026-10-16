@@ -13,7 +13,7 @@ fun atomicText(file: File, text: String) {
         it.write(text.toByteArray(Charsets.UTF_8))
         it.fdSyncIfPossible()
     }
-    check(tmp.renameTo(file)) { "Atomic write failed: ${file.name}" }
+    check(tmp.renameTo(file)) { "无法写入文件：${file.name}" }
 }
 
 private fun java.io.OutputStream.fdSyncIfPossible() {
@@ -94,6 +94,7 @@ class SampleStore(val context: Context) {
 
     fun initialize(folder: File, cameraId: String) {
         atomicText(File(folder, "parameters.json"), defaults().toString(2))
+        originalParameters(folder)
         val meta =
             JSONObject()
                 .put("schema_version", "1.0")
@@ -124,6 +125,40 @@ class SampleStore(val context: Context) {
 
     fun parameters(folder: File) = JSONObject(File(folder, "parameters.json").readText())
 
+    /** Neutral source baseline is immutable and separate from the editable snapshot. */
+    fun originalParameters(folder: File): JSONObject {
+        val file = File(folder, "original_parameters.json")
+        if (!file.exists()) atomicText(file, defaults().toString(2))
+        return JSONObject(file.readText())
+    }
+
+    fun comparison(folder: File): JSONObject? =
+        File(folder, "comparison.json").takeIf { it.isFile }?.let { JSONObject(it.readText()) }
+
+    fun isRendered(folder: File, doc: JSONObject): Boolean =
+        runCatching {
+                val hashes = metadata(folder).getJSONObject("sha256")
+                require(canonicalJson(parameters(folder)) == canonicalJson(doc))
+                listOf(
+                        "original.jpg",
+                        "edited.png",
+                        "thumbnail_before.jpg",
+                        "thumbnail_after.jpg",
+                        "parameters.json",
+                        "original_parameters.json",
+                        "comparison.json",
+                    )
+                    .forEach { require(digest(File(folder, it)) == hashes.getString(it)) }
+                AnalysisData.validate(
+                    comparison(folder)!!,
+                    folder.name,
+                    originalParameters(folder),
+                    doc,
+                )
+                true
+            }
+            .getOrDefault(false)
+
     fun draft(folder: File, doc: JSONObject, history: String) {
         // Once editing starts the old target is no longer a confirmed label.
         val meta = metadata(folder).put("status", "draft")
@@ -137,20 +172,43 @@ class SampleStore(val context: Context) {
         atomicText(File(folder, "metadata.json"), oldMeta.toString(2))
         Imaging.memoryCheck(File(folder, "original.jpg"))
         val source = Imaging.decode(File(folder, "original.jpg"))
+        var prepared: android.graphics.Bitmap? = null
         try {
-            val output = Imaging.render(source, doc)
+            val input = Imaging.geometry(source, doc)
+            prepared = input
+            val output = Imaging.renderPrepared(input, doc)
             try {
                 val tmp = File(folder, "edited.png.tmp")
                 tmp.outputStream().use {
                     check(output.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
+                    it.fdSyncIfPossible()
                 }
                 check(tmp.renameTo(File(folder, "edited.png")))
-                Imaging.thumbnail(source, File(folder, "thumbnail_before.jpg"))
+                Imaging.thumbnail(input, File(folder, "thumbnail_before.jpg"))
                 Imaging.thumbnail(output, File(folder, "thumbnail_after.jpg"))
+                val before =
+                    ImageStatistics.compute(input.width, input.height) { x, y ->
+                        input.getPixel(x, y)
+                    }
+                val after =
+                    ImageStatistics.compute(output.width, output.height) { x, y ->
+                        output.getPixel(x, y)
+                    }
+                val comparison =
+                    AnalysisData.create(
+                        folder.name,
+                        metadata(folder).getJSONObject("capture"),
+                        originalParameters(folder),
+                        doc,
+                        before,
+                        after,
+                    )
+                atomicText(File(folder, "comparison.json"), comparison.toString(2))
             } finally {
                 output.recycle()
             }
         } finally {
+            if (prepared !== source) prepared?.recycle()
             source.recycle()
         }
         atomicText(File(folder, "parameters.json"), doc.toString(2))
@@ -161,6 +219,8 @@ class SampleStore(val context: Context) {
                 "thumbnail_before.jpg",
                 "thumbnail_after.jpg",
                 "parameters.json",
+                "original_parameters.json",
+                "comparison.json",
             )
             .forEach { hashes.put(it, digest(File(folder, it))) }
         if (File(folder, "original.dng").isFile)

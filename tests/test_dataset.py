@@ -22,6 +22,44 @@ class DatasetTests(unittest.TestCase):
   for name,data in files.items():(f/name).write_bytes(data)
   meta={'schema_version':'1.0','sample_id':sid,'status':status,'capture':{'device_model':'test-device'},'scene':{'lighting':['sunny'],'subjects':['architecture'],'rating':5},'sha256':{n:sha256(f/n) for n in files}}
   (f/'metadata.json').write_text(json.dumps(meta));return f
+ def add_comparison(self,folder):
+  from tools.g23_dataset import parameter_values
+  original=read_json(DEFAULT);edited=copy.deepcopy(original);edited['parameters']['exposure_ev']=1.2
+  (folder/'parameters.json').write_text(json.dumps(edited))
+  before=parameter_values(original['parameters']);after=parameter_values(edited['parameters'])
+  comparison={'analysis_schema_version':'1.0','sample_id':folder.name,'render_pipeline_version':'1.0.0',
+   'before':{'parameters':original,'statistics':{}},'after':{'parameters':edited,'statistics':{}},
+   'parameter_pairs':[{'parameter':key,'label':key,'before':value,'after':after[key]} for key,value in before.items()]}
+  (folder/'original_parameters.json').write_text(json.dumps(original));(folder/'comparison.json').write_text(json.dumps(comparison))
+  self.rehash(folder)
+  return comparison
+ def rehash(self,folder):
+  meta=read_json(folder/'metadata.json')
+  meta['sha256']={p.name:sha256(p) for p in folder.iterdir() if p.name!='metadata.json'}
+  (folder/'metadata.json').write_text(json.dumps(meta))
+ def test_paired_data_round_trip_includes_curves_crop_and_csv(self):
+  import csv
+  f=self.sample();comparison=self.add_comparison(f);out=self.root/'pairs.zip'
+  export_dataset(self.samples,out)
+  with zipfile.ZipFile(out) as z:
+   prefix='G23_Dataset_Export/'
+   rows=list(csv.DictReader(io.StringIO(z.read(prefix+'reports/before_after_parameters.csv').decode())))
+   exposure=next(p for p in rows if p['parameter']=='exposure_ev')
+   self.assertEqual(json.loads(exposure['before']),0);self.assertEqual(json.loads(exposure['after']),1.2)
+   self.assertTrue(any(p['parameter']=='tone_curves.rgb' for p in rows))
+   self.assertTrue(any(p['parameter']=='geometry.crop' for p in rows))
+   z.extractall(self.root/'paired')
+  stats=analyze(self.root/'paired/G23_Dataset_Export',self.root/'paired.html')
+  self.assertEqual(stats['exposure_ev']['mean'],1.2)
+  self.assertIn('原始与调色参数',(self.root/'paired.html').read_text())
+ def test_reject_mismatched_analysis_even_with_valid_hashes(self):
+  f=self.sample();comparison=self.add_comparison(f)
+  comparison['parameter_pairs'][0]['after']=999
+  (f/'comparison.json').write_text(json.dumps(comparison));self.rehash(f)
+  with self.assertRaisesRegex(ValueError,'pair mismatch'):export_dataset(self.samples,self.root/'bad.zip')
+ def test_missing_analysis_companion_is_rejected(self):
+  f=self.sample();self.add_comparison(f);(f/'comparison.json').unlink()
+  with self.assertRaisesRegex(ValueError,'missing file'):export_dataset(self.samples,self.root/'bad.zip')
  def test_round_trip_and_final_labels_only(self):
   f=self.sample();(f/'history.json').write_text('["not a final label"]');self.sample('G23_002','draft',b'\xff\xd8\xffcapture-b')
   out=self.root/'data.zip';progress=[]
