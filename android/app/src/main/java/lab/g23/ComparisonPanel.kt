@@ -16,6 +16,7 @@ object ComparisonPanel {
         before: JSONObject,
         after: JSONObject,
         analysis: JSONObject?,
+        look: JSONObject? = analysis?.optJSONObject("look"),
     ): LinearLayout {
         val body = LabUi.column(c).apply { setPadding(c.dp(16), 0, c.dp(16), c.dp(16)) }
         body.addView(LabUi.label(c, id).apply { setPadding(0, c.dp(12), 0, c.dp(12)) })
@@ -56,6 +57,10 @@ object ComparisonPanel {
         capture.keys().forEach { key ->
             val v = ParameterLabels.value(capture.get(key))
             row(names[key] ?: key, v, v)
+        }
+        if (look != null) {
+            section("胶卷色调")
+            row("LUT", "未应用", look.getString("name"))
         }
         section("色调参数 · 原始基线与当前快照")
         val pairs = ParameterLabels.pairs(before, after)

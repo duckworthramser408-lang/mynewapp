@@ -184,7 +184,13 @@ object AnalysisData {
             .put("parameter_pairs", ParameterLabels.pairs(before, after))
     }
 
-    fun validate(doc: JSONObject, id: String, before: JSONObject, after: JSONObject) {
+    fun validate(
+        doc: JSONObject,
+        id: String,
+        before: JSONObject,
+        after: JSONObject,
+        look: JSONObject? = null,
+    ) {
         require(
             doc.getString("analysis_schema_version") == "1.0" && doc.getString("sample_id") == id
         ) {
@@ -195,6 +201,7 @@ object AnalysisData {
         ) {
             "分析数据版本不匹配"
         }
+        require(canonicalJson(doc.opt("look")) == canonicalJson(look)) { "分析数据与照片的 LUT 不匹配" }
         val expected = ParameterLabels.pairs(before, after)
         require(canonicalJson(doc.getJSONArray("parameter_pairs")) == canonicalJson(expected)) {
             "并列参数与最终快照不一致"

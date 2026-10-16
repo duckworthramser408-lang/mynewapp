@@ -176,7 +176,9 @@
           "thumbnail_after.jpg",
           "parameters.json",
           "original_parameters.json",
-          "comparison.json"
+          "comparison.json",
+          "look.json",
+          "look.cube"
         ]
       },
       "additionalProperties": {

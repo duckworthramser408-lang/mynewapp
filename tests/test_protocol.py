@@ -30,3 +30,10 @@ class ProtocolTests(unittest.TestCase):
   fields=re.findall(r"new ParameterPair\('([^']+)'",code)
   self.assertEqual(len(fields),len(set(fields)))
   self.assertEqual(set(fields),set(parameter_values(default['parameters'])))
+ def test_harmony_uses_identical_user_lut_resources(self):
+  import hashlib
+  catalog=json.loads((ROOT/'looks/luts/catalog.json').read_text())
+  target=ROOT/'harmony/entry/src/main/resources/rawfile/luts'
+  self.assertEqual(json.loads((target/'catalog.json').read_text()),catalog)
+  for item in catalog['luts']:
+   self.assertEqual(hashlib.sha256((target/item['file']).read_bytes()).hexdigest(),item['sha256'])

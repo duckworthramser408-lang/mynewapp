@@ -1,4 +1,5 @@
 #include "g23.h"
+#include "g23_lut.h"
 #include "napi/native_api.h"
 #include <cstring>
 #include <new>
@@ -12,6 +13,9 @@ struct Work {
     napi_ref source{};
     std::string json;
     int w = 0, h = 0;
+    std::vector<float> cube;
+    int cubeSize = 0;
+    float lo[3]{}, hi[3]{};
     char error[256]{};
     int code = 1;
 };
@@ -30,8 +34,8 @@ static bool String(napi_env env, napi_value v, std::string &out) {
     return true;
 }
 static napi_value Render(napi_env env, napi_callback_info info) {
-    size_t argc = 4;
-    napi_value args[4];
+    size_t argc = 8;
+    napi_value args[8];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
     auto *w = new (std::nothrow) Work;
     if (!w) {
@@ -40,7 +44,8 @@ static napi_value Render(napi_env env, napi_callback_info info) {
     }
     void *bytes = nullptr;
     size_t count = 0;
-    if (argc != 4 || napi_get_arraybuffer_info(env, args[0], &bytes, &count) != napi_ok ||
+    if ((argc != 4 && argc != 8) ||
+        napi_get_arraybuffer_info(env, args[0], &bytes, &count) != napi_ok ||
         napi_get_value_int32(env, args[1], &w->w) != napi_ok ||
         napi_get_value_int32(env, args[2], &w->h) != napi_ok || w->w <= 0 || w->h <= 0 ||
         int64_t(w->w) * w->h > 100000000 || count != size_t(w->w) * w->h * 4 ||
@@ -48,6 +53,32 @@ static napi_value Render(napi_env env, napi_callback_info info) {
         delete w;
         napi_throw_type_error(env, nullptr, "RGBA buffer, dimensions and JSON required");
         return nullptr;
+    }
+    if (argc == 8) {
+        void *table = nullptr, *minimum = nullptr, *maximum = nullptr;
+        size_t tableBytes = 0, loBytes = 0, hiBytes = 0;
+        if (napi_get_value_int32(env, args[5], &w->cubeSize) != napi_ok || w->cubeSize < 2 ||
+            w->cubeSize > 65 ||
+            napi_get_arraybuffer_info(env, args[4], &table, &tableBytes) != napi_ok ||
+            tableBytes != size_t(w->cubeSize) * w->cubeSize * w->cubeSize * 3 * sizeof(float) ||
+            napi_get_arraybuffer_info(env, args[6], &minimum, &loBytes) != napi_ok ||
+            loBytes != 3 * sizeof(float) ||
+            napi_get_arraybuffer_info(env, args[7], &maximum, &hiBytes) != napi_ok ||
+            hiBytes != 3 * sizeof(float)) {
+            delete w;
+            napi_throw_type_error(env, nullptr, "LUT 网格或输入范围无效");
+            return nullptr;
+        }
+        try {
+            w->cube.resize(tableBytes / sizeof(float));
+            std::memcpy(w->cube.data(), table, tableBytes);
+            std::memcpy(w->lo, minimum, loBytes);
+            std::memcpy(w->hi, maximum, hiBytes);
+        } catch (...) {
+            delete w;
+            napi_throw_error(env, nullptr, "LUT 内存分配失败");
+            return nullptr;
+        }
     }
     try {
         w->input = static_cast<uint8_t *>(bytes);
@@ -79,6 +110,10 @@ static napi_value Render(napi_env env, napi_callback_info info) {
             auto *w = static_cast<Work *>(data);
             w->code = g23_render(w->input, w->output->data(), w->w, w->h, w->json.c_str(), w->error,
                                  sizeof(w->error));
+            if (!w->code && !w->cube.empty())
+                w->code = g23_apply_lut(w->output->data(), w->w, w->h, size_t(w->w) * 4,
+                                        w->cube.data(), w->cube.size(), w->cubeSize, w->lo, w->hi,
+                                        w->error, sizeof(w->error));
         },
         [](napi_env env, napi_status status, void *data) {
             auto *w = static_cast<Work *>(data);

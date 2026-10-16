@@ -3,6 +3,7 @@ import { colorSpaceManager } from '@kit.ArkGraphics2D';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import native from 'libg23.so';
 import { Document, clone } from './Model';
+import { CubeTable } from './LutLibrary';
 
 export class Imaging {
  static async decode(path: string, maxSide: number = 0): Promise<image.PixelMap> {
@@ -44,7 +45,7 @@ export class Imaging {
    }
    if(doc.parameters.geometry.rotation_degrees!==0) await input.rotate(doc.parameters.geometry.rotation_degrees);
  }
- static async render(path: string,doc: Document,maxSide: number=0): Promise<image.PixelMap> {
+ static async render(path: string,doc: Document,maxSide: number=0, lut?: CubeTable): Promise<image.PixelMap> {
   Imaging.validate(doc);
   const input=await Imaging.decode(path,maxSide);
   let buffer: ArrayBuffer;
@@ -55,7 +56,7 @@ export class Imaging {
    if(width*height*16+64*1024*1024>512*1024*1024) throw new Error('图像超过本版本的内存预算，保留原图；请使用较低拍摄分辨率或在桌面处理。');
    buffer=new ArrayBuffer(width*height*4);await input.readPixelsToBuffer(buffer);
   } finally {await input.release();}
-  const output=await native.render(buffer,width,height,JSON.stringify(Imaging.identity(doc)));
+  const output=lut?await native.render(buffer,width,height,JSON.stringify(Imaging.identity(doc)),lut.values.buffer,lut.size,lut.minimum.buffer,lut.maximum.buffer):await native.render(buffer,width,height,JSON.stringify(Imaging.identity(doc)));
   const result=await image.createPixelMap(output,{size:{width:width,height:height},pixelFormat:image.PixelMapFormat.RGBA_8888,editable:true,alphaType:image.AlphaType.OPAQUE});
   result.setColorSpace(colorSpaceManager.create(colorSpaceManager.ColorSpace.SRGB));return result;
  }

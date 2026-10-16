@@ -16,6 +16,7 @@ class CameraLayout(
     onFlash: () -> Unit,
     onGrid: () -> Unit,
     onRatio: (String) -> Unit,
+    onLut: () -> Unit = {},
 ) : LinearLayout(c) {
     val previewContainer = AspectFrame(c)
     val viewfinder = FrameLayout(c)
@@ -41,6 +42,13 @@ class CameraLayout(
     val exposureLabel = LabUi.label(c, "曝光补偿  0.0 档")
     val exposureSlider = SeekBar(c)
     val captureLabel = LabUi.label(c, "高画质拍摄")
+    val lutName =
+        LabUi.text(c, "选择胶卷", 16f, LabUi.accent).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+    val lutButton = LabUi.column(c)
     var selectedRatio = "4:3"
         set(value) {
             field = value
@@ -57,24 +65,27 @@ class CameraLayout(
         setBackgroundColor(LabUi.background)
         val top = LabUi.row(c)
         top.addView(flashButton, LayoutParams(c.dp(48), c.dp(60)))
-        val brand =
-            LabUi.column(c).apply {
-                gravity = Gravity.CENTER
-                addView(
-                    LabUi.text(c, "G23 LAB", 18f).apply {
-                        gravity = Gravity.CENTER
-                        letterSpacing = .14f
-                        setTypeface(typeface, Typeface.BOLD)
-                    }
+        lutButton.apply {
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            contentDescription = "选择 LUT 胶卷色调"
+            background =
+                android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x22ffffff),
+                    LabUi.shape(LabUi.background, c.dp(14)),
+                    null,
                 )
-                addView(
-                    LabUi.label(c, "影像实验室").apply {
-                        gravity = Gravity.CENTER
-                        setPadding(0, c.dp(5), 0, 0)
-                    }
-                )
-            }
-        top.addView(brand, LayoutParams(0, c.dp(60), 1f))
+            addView(lutName)
+            addView(
+                LabUi.label(c, "选择 LUT  ⌄").apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, c.dp(5), 0, 0)
+                }
+            )
+            setOnClickListener { onLut() }
+        }
+        top.addView(lutButton, LayoutParams(0, c.dp(60), 1f))
         top.addView(
             LabUi.iconButton(c, LabIcon.Kind.SETTINGS, "相机设置", onSettings),
             LayoutParams(c.dp(48), c.dp(60)),
@@ -180,6 +191,11 @@ class CameraLayout(
             )
                 1 / portrait
             else portrait
+    }
+
+    fun setLutName(name: String) {
+        lutName.text = name
+        lutButton.contentDescription = "选择 LUT，当前：$name"
     }
 
     fun setFlash(enabled: Boolean) {

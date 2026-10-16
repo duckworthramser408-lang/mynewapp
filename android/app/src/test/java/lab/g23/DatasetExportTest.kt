@@ -99,6 +99,34 @@ class DatasetExportTest {
             assertTrue(csv.contains("geometry.crop"))
             assertFalse(zip.entries().asSequence().any { it.name.contains("history.json") })
         }
+        // Export infrastructure must preserve the look stage along with legacy snapshots.
+        val film = store.looks.items.first { it.name == "理光GR" }
+        store.looks.attach(folder, film)
+        comparison.put("look", store.look(folder))
+        atomicText(File(folder, "comparison.json"), comparison.toString())
+        listOf("look.json", "look.cube", "comparison.json").forEach {
+            hashes.put(it, digest(File(folder, it)))
+        }
+        atomicText(
+            File(folder, "metadata.json"),
+            store.metadata(folder).put("sha256", hashes).toString(),
+        )
+        assertTrue(store.isRendered(folder, after))
+        val withLook = DatasetExport.export(store, listOf(folder), false, false) { _, _ -> }
+        ZipFile(withLook).use { zip ->
+            val prefix = "G23_Dataset_Export/"
+            val row =
+                JSONObject(
+                    zip.getInputStream(zip.getEntry(prefix + "dataset.jsonl"))
+                        .bufferedReader()
+                        .readText()
+                        .trim()
+                )
+            assertEquals("samples/${folder.name}/look.cube", row.getString("lut"))
+            assertNotNull(zip.getEntry(prefix + row.getString("lut")))
+            assertNotNull(zip.getEntry(prefix + row.getString("look")))
+        }
+        withLook.delete()
         assertEquals(originalHash, digest(File(folder, "original.jpg")))
         File(folder, "comparison.json").appendText(" ")
         assertFalse(store.isRendered(folder, after))

@@ -50,3 +50,9 @@ ctest --test-dir .build/cmake --output-on-failure
 `testDebugUnitTest` 包含 Robolectric 4.14.1 / API 35 原生图形测试，Gradle 解析固定的 Android instrumented SDK 后复制到 `android/app/build/robolectric-sdks`。测试离线读取该目录，缓存位于工作区，不重定向用户 HOME。`android/app/build/reports/ui/camera.png` 是空取景框的原生布局测试渲染；测试不会连接真实摄像头。
 
 调试包 0.2.0 / versionCode 2 使用与 0.1 相同的当前开发签名。可以尝试 `adb install -r` 升级；签名、包名不一致时系统会拒绝覆盖。不要为了升级而先卸载未导出的照片。
+
+## 0.3 LUT 资源与验证
+
+上传的 LUT 在 `looks/luts/`。Android assets 直接读取该目录；鸿蒙 rawfile 是由 `python3 tools/sync_luts.py` 同步的原样副本，变更 LUT 后先执行同步，测试会检查两端 SHA-256。
+
+`./tools/test.sh` 额外执行实际 LUT 插值、图片/ZIP 往返、LUT ASan/UBSan 验证；CMake/CTest 包含 core 与 lut 两个目标。Android 原生控件测试输出 `android/app/build/reports/ui/lut-picker.png`。这些测试不测量手机马达或真实相机。

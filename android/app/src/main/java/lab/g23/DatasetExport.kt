@@ -39,6 +39,7 @@ object DatasetExport {
             }
             val hashes = meta.optJSONObject("sha256") ?: error("此样本尚未保存成片，请先保存或使用一键导出自动生成。")
             (required +
+                    store.lookFiles(folder) +
                     if (File(folder, "original.dng").isFile) listOf("original.dng")
                     else emptyList())
                 .forEach { name ->
@@ -54,6 +55,7 @@ object DatasetExport {
                 folder.name,
                 store.originalParameters(folder),
                 doc,
+                store.look(folder),
             )
             require(
                 doc.getString("schema_version") == "1.0" &&
@@ -81,6 +83,7 @@ object DatasetExport {
                     val rel = "samples/${folder.name}/"
                     val exportedHashes = JSONObject()
                     (required.filter { it != "metadata.json" } +
+                            store.lookFiles(folder) +
                             if (!stripGps && File(folder, "original.dng").isFile)
                                 listOf("original.dng")
                             else emptyList())
@@ -152,6 +155,10 @@ object DatasetExport {
                             .put("rating", meta.getJSONObject("scene").opt("rating"))
                             .put("approved", meta.getString("status") == "approved")
                             .put("render_pipeline_version", "1.0.0")
+                    if (store.look(folder) != null)
+                        row.put("look", rel + "look.json")
+                            .put("lut", rel + "look.cube")
+                            .put("look_pipeline_version", "cube_srgb_trilinear_1.0")
                     rows.add(row)
                     val pairs = ParameterLabels.pairs(store.originalParameters(folder), params)
                     fun quoted(v: Any?) = "\"" + (v?.toString() ?: "").replace("\"", "\"\"") + "\""

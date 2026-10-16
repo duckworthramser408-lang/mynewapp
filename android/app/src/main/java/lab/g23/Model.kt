@@ -82,6 +82,13 @@ class EditHistory(initial: JSONObject, persisted: String? = null) {
 }
 
 class SampleStore(val context: Context) {
+    val looks = LutLibrary(context)
+
+    fun look(folder: File) = looks.look(folder)
+
+    fun lookFiles(folder: File): List<String> =
+        if (look(folder) == null) emptyList() else listOf("look.json", "look.cube")
+
     val root = File(context.filesDir, "samples").apply { mkdirs() }
 
     fun defaults() =
@@ -121,6 +128,12 @@ class SampleStore(val context: Context) {
             ?.filter { it.isDirectory && File(it, "metadata.json").exists() }
             ?.sortedByDescending { it.lastModified() } ?: emptyList()
 
+    fun photos() =
+        all().filter {
+            File(it, "edited.png").isFile ||
+                (!File(it, "look.json").exists() && File(it, "original.jpg").isFile)
+        }
+
     fun metadata(folder: File) = JSONObject(File(folder, "metadata.json").readText())
 
     fun parameters(folder: File) = JSONObject(File(folder, "parameters.json").readText())
@@ -148,12 +161,14 @@ class SampleStore(val context: Context) {
                         "original_parameters.json",
                         "comparison.json",
                     )
+                    .plus(lookFiles(folder))
                     .forEach { require(digest(File(folder, it)) == hashes.getString(it)) }
                 AnalysisData.validate(
                     comparison(folder)!!,
                     folder.name,
                     originalParameters(folder),
                     doc,
+                    look(folder),
                 )
                 true
             }
@@ -176,7 +191,8 @@ class SampleStore(val context: Context) {
         try {
             val input = Imaging.geometry(source, doc)
             prepared = input
-            val output = Imaging.renderPrepared(input, doc)
+            val look = look(folder)
+            val output = Imaging.renderPrepared(input, doc, looks.forPhoto(folder))
             try {
                 val tmp = File(folder, "edited.png.tmp")
                 tmp.outputStream().use {
@@ -203,6 +219,7 @@ class SampleStore(val context: Context) {
                         before,
                         after,
                     )
+                comparison.put("look", look ?: JSONObject.NULL)
                 atomicText(File(folder, "comparison.json"), comparison.toString(2))
             } finally {
                 output.recycle()
@@ -222,6 +239,7 @@ class SampleStore(val context: Context) {
                 "original_parameters.json",
                 "comparison.json",
             )
+            .plus(lookFiles(folder))
             .forEach { hashes.put(it, digest(File(folder, it))) }
         if (File(folder, "original.dng").isFile)
             hashes.put("original.dng", digest(File(folder, "original.dng")))
@@ -230,6 +248,11 @@ class SampleStore(val context: Context) {
                 .put("status", if (approved) "approved" else "draft")
                 .put("sha256", hashes)
                 .put("render_pipeline_version", "1.0.0")
+                .put("look", look(folder) ?: JSONObject.NULL)
+                .put(
+                    "style",
+                    look(folder)?.getString("name") ?: oldMeta.optString("style", "G23_positive"),
+                )
         atomicText(File(folder, "metadata.json"), meta.toString(2))
     }
 

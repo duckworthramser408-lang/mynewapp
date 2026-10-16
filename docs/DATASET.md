@@ -60,3 +60,11 @@ python3 -m tools.g23_dataset analyze ./G23.zip --report ./report.html
 统计对比采用相同的当前裁切和旋转范围，文件中的完整原 JPEG 保留。固定网格每侧最多 65,536 像素，RGB 和亮度为编码 sRGB 的 0–255 平均值，饱和度为 HSL 0–1 均值，暗部为亮度 ≤5、高光为 ≥250 的比例，亮度直方图 64 档。宽高记录对齐后的尺寸。统计不是完整像素普查或设备色彩标定。
 
 `reports/before_after_parameters.csv` 每行 sample_id、parameter、label、before、after，包含数值、曲线控制点、裁切数组及 null。JSONL 新增可选 original_parameters 与 comparison 相对路径；manifest 与 metadata 同时校验新文件。导出的分析 JSON 不含图片像素；Android 单独保存时还附带 metadata。
+
+## 0.3 绑定 LUT
+
+新照片增加可选的 `look.json` 与 `look.cube`，纳入 metadata.sha256 和 ZIP manifest。JSONL 新增 `look`、`lut` 相对路径及 `look_pipeline_version`。`comparison.json.look` 对应同一份 look 记录；基础数值参数仍在 parameters.json，不能把中性参数理解为没有 LUT。
+
+look 记录固定 id、name、source_name、SHA-256、grid_size、input_color_space=sRGB、intensity=1.0、applied_after=g23_parameters_1.0.0 和 look_pipeline_version=cube_srgb_trilinear_1.0。它是独立的末级处理，不改变原基础参数协议。没有 look 的历史样本沿用旧流程；存在新文件时必须完整成对且通过哈希与版本检查，不能省略后再将目标当作纯参数调色。
+
+0.3 相册不再承担样本选择、实验编辑或导出；相机设置可打开最近照片的编辑器，或导出全部照片。桌面 `tools.render` 的 `--lut look.cube` 可按相同顺序重建目标。

@@ -63,3 +63,49 @@ extern "C" JNIEXPORT void JNICALL Java_lab_g23_NativeBridge_renderInto(JNIEnv *e
     if (status)
         fail(error);
 }
+
+#include "g23_lut.h"
+extern "C" JNIEXPORT void JNICALL Java_lab_g23_NativeBridge_applyCube(JNIEnv *env, jobject,
+                                                                      jobject bitmap,
+                                                                      jfloatArray table, jint size,
+                                                                      jfloatArray minimum,
+                                                                      jfloatArray maximum) {
+    auto fail = [&](const char *s) {
+        env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), s);
+    };
+    AndroidBitmapInfo info{};
+    if (!bitmap || !table || !minimum || !maximum || env->GetArrayLength(minimum) != 3 ||
+        env->GetArrayLength(maximum) != 3 || AndroidBitmap_getInfo(env, bitmap, &info) ||
+        info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        fail("LUT 需要有效的标准色彩图像与网格");
+        return;
+    }
+    const jsize count = env->GetArrayLength(table);
+    jfloat *values = env->GetFloatArrayElements(table, nullptr);
+    if (!values)
+        return;
+    jfloat *lo = env->GetFloatArrayElements(minimum, nullptr);
+    if (!lo) {
+        env->ReleaseFloatArrayElements(table, values, JNI_ABORT);
+        return;
+    }
+    jfloat *hi = env->GetFloatArrayElements(maximum, nullptr);
+    if (!hi) {
+        env->ReleaseFloatArrayElements(minimum, lo, JNI_ABORT);
+        env->ReleaseFloatArrayElements(table, values, JNI_ABORT);
+        return;
+    }
+    void *pixels = nullptr;
+    char error[256]{};
+    int code = 1;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) == 0) {
+        code = g23_apply_lut(static_cast<uint8_t *>(pixels), info.width, info.height, info.stride,
+                             values, count, size, lo, hi, error, sizeof(error));
+        AndroidBitmap_unlockPixels(env, bitmap);
+    }
+    env->ReleaseFloatArrayElements(maximum, hi, JNI_ABORT);
+    env->ReleaseFloatArrayElements(minimum, lo, JNI_ABORT);
+    env->ReleaseFloatArrayElements(table, values, JNI_ABORT);
+    if (code)
+        fail(error[0] ? error : "无法读取图像像素");
+}

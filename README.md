@@ -7,7 +7,7 @@ Android 与 HarmonyOS NEXT 原生实验相机，配合 C++ 调色引擎、版本
 
 ## 下载安卓安装包
 
-**[点击下载 G23 Lab 0.2 安卓调试版 APK（约 14MB）](https://github.com/duckworthramser408-lang/mynewapp/raw/refs/heads/main/downloads/G23-Lab-debug.apk)**
+**[点击下载 G23 Lab 0.3 安卓调试版 APK（约 20MB）](https://github.com/duckworthramser408-lang/mynewapp/raw/refs/heads/main/downloads/G23-Lab-debug.apk)**
 
 如果 GitHub 显示文件无法预览，请点击 **Download raw file / 下载原始文件**。APK 用于 Android 手机安装，电脑用于下载；它不是电脑软件或网页应用。当前为开发调试版，真实设备上的相机和导出流程仍待验收。
 
@@ -17,7 +17,7 @@ GitHub Actions 配置会在 push / pull request 后执行核心与 Android 检�
 
 | 目录 | 用途 |
 |---|---|
-| `android/` | Kotlin / CameraX 1.5.1；原生相机、编辑、样本、ZIP 分享 |
+| `android/` | Kotlin / CameraX 1.5.1；胶卷 LUT 相机、照片相册、实验编辑与 ZIP 保存 |
 | `harmony/` | ArkTS / ArkUI / Camera Kit；C++ 异步 N-API 桥接 |
 | `core/` | SDR sRGB、float 工作缓冲、非破坏性、分块渲染 |
 | `protocol/` | 参数 / 元数据 JSON Schema、默认值、单位 |
@@ -53,16 +53,16 @@ python3 -m tools.render input.jpg protocol/default_parameters.json output.png
 
 ZIP 读取器将图片流式解压到报告旁独立的 `g23-report-assets-*` 目录；移动报告时同时移动该目录。训练读取代码见 `tools/g23_dataset.py` 的 `analyze()`：每行 JSONL 对应原图、PNG 目标及最终参数，历史不会自动作为标签。
 
-## 0.2 中文界面与导出
+## 0.3 胶卷 LUT 相机
 
-相机快门在底部中央，相册在左下角。编辑器和相册默认并列显示原图与成片；中文参数表按原始/调色两列对应每个参数。深灰背景、暖白文字、灰绿色强调色与原生线条图标统一了相机、编辑与相册。
+用户提供的 15 个 33³ LUT 已全部接入。相机顶部的品牌文字改为 LUT 选择按钮：右侧半圆排列圆柱胶卷暗盒，左侧箭头标记当前选择，名称随滚动更新。支持循环拨动、短距离惯性、吸附、轻微触觉反馈和保存上次选择。
 
-调色页“一键导出”或相册批量选择后“一键导出 · 保存到文件”，先生成完整成片与分析数据，再打开系统另存为。ZIP 含原图、成片、原始参数、最终参数、图像统计、并列 CSV、JSONL 和 SHA-256；另可只保存分析 JSON。保存成功后可直接发送文件。
+点击“使用并返回拍摄”，拍照后自动生成带所选 LUT 的完整成片并回到相机。取景目前是原始实时画面。原 JPEG 保留，每张照片绑定独立的 LUT 文件与记录，后来换胶卷不会影响旧照片。
 
-**[中文使用说明：照片位置、调色、并列数据、导出发送](docs/USAGE.zh.md)** · [相机布局预览（原生控件测试渲染）](docs/images/camera-layout-0.2.png)
+相册只保留三列照片和全屏浏览。原有编辑、并列数据和导出移到相机设置的“照片工具”。导出的 ZIP 包含原图、成片、参数、分析、绑定 LUT 和校验信息；普通导出不会将草稿自动确认为训练样本。
 
-原图保存在应用私有相册，不自动写入系统相册。普通保存和导出保留草稿状态，长按“保存成片”才明确确认为训练样本。重新编辑会回到草稿。旧版照片首次保存/导出时补齐新分析文件，原始 JPEG 不变，调色算法仍为 1.0.0。
+**[中文使用说明](docs/USAGE.zh.md)** · [胶卷选择器预览（原生控件测试渲染）](docs/images/lut-picker-0.3.png) · [LUT 格式与处理流程](docs/LUT.md)
 
-Android 可根据 CameraX 能力请求 RAW+JPEG。导出定位清理在设置中控制，默认保留原始文件；开启时只清理导出副本并省略 DNG。鸿蒙本轮同步的是待 SDK 编译验证的源码。
+Android 可根据 CameraX 能力请求 RAW+JPEG。导出定位清理在设置中控制；开启时只清理导出副本并省略 DNG。鸿蒙同步的是待 SDK 编译验证的源码，包含相同的 LUT 资源和共享 C++ 处理。
 
 详细说明：[构建与真机运行](docs/BUILD.md) · [模块架构](docs/ARCHITECTURE.md) · [算法公式](docs/PIPELINE.md) · [数据协议](docs/DATASET.md) · [验收与待办](docs/ACCEPTANCE.md) · [原始任务书](docs/REQUIREMENTS.zh.md)

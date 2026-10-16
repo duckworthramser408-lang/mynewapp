@@ -1,4 +1,6 @@
 import { CurveEditor } from './CurveEditor';
+import { LutWheel } from './LutWheel';
+import { FilmLut, CubeTable } from '../model/LutLibrary';
 import { parameterPairs, parameterName, ParameterPair, DisplayPair, capturePairs, statisticsPairs, Comparison } from '../model/Analysis';
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
@@ -14,6 +16,12 @@ import { Document, Metadata, Control, controls, clone, HistoryState } from '../m
 @Component
 struct Index {
  @State page: string = 'Camera';
+ @State films: FilmLut[] = [];
+ @State lutName: string = '';
+ @State chosenIndex: number = 0;
+ @State browsing?: image.PixelMap = undefined;
+ @State photoIndex: number = 0;
+ private previewLut?: CubeTable;
  @State status: string = '连接相机后显示设备能力';
  @State ready: boolean = false;
  @State settings: boolean = false;
@@ -71,7 +79,7 @@ struct Index {
  private context(): common.UIAbilityContext {return getContext(this) as common.UIAbilityContext;}
  private backgroundCallback: () => void = (): void => {this.ready=false;this.camera.close().catch((e:Error)=>this.status=e.message);};
  private foregroundCallback: () => void = (): void => {if(this.page==='Camera' && this.surfaceId.length>0)this.openCamera();};
- aboutToAppear(): void {this.context().eventHub.on('g23.background',this.backgroundCallback);this.context().eventHub.on('g23.foreground',this.foregroundCallback);this.store=new Store(this.context());this.refresh();}
+ aboutToAppear(): void {this.context().eventHub.on('g23.background',this.backgroundCallback);this.context().eventHub.on('g23.foreground',this.foregroundCallback);this.store=new Store(this.context());this.films=this.store.looks.items;this.lutName=this.store.looks.selected().name;this.refresh();}
  aboutToDisappear(): void {this.context().eventHub.off('g23.background',this.backgroundCallback);this.context().eventHub.off('g23.foreground',this.foregroundCallback);this.renderToken++;this.camera.close().catch((e: Error) => console.error(e.message));}
  private async run(job: () => Promise<void>): Promise<void> {
   if(this.busy)return;this.busy=true;
@@ -88,12 +96,13 @@ struct Index {
   if(page==='Dataset')this.refresh();
  }
  private async shoot(): Promise<void> {
+  const look=this.store!.looks.selected();const ratio=this.ratio;
   const bytes=await this.camera.capture();this.folder=await this.store!.capture(bytes,this.camera.cameraId);
-  const d=this.store!.params(this.folder);const source=await Imaging.decode(this.folder+'/original.jpg',640);
-  try{const info=await source.getImageInfo();const landscape=this.ratio==='3:2'?1.5:this.ratio==='1:1'?1:4/3;const desired=info.size.width<info.size.height?1/landscape:landscape;const actual=info.size.width/info.size.height;
+  await this.store!.looks.attach(this.folder,look);const d=this.store!.params(this.folder);const source=await Imaging.decode(this.folder+'/original.jpg',640);
+  try{const info=await source.getImageInfo();const landscape=ratio==='3:2'?1.5:ratio==='1:1'?1:4/3;const desired=info.size.width<info.size.height?1/landscape:landscape;const actual=info.size.width/info.size.height;
    d.parameters.geometry.crop=actual>desired?[(1-desired/actual)/2,0,(1+desired/actual)/2,1]:[0,(1-actual/desired)/2,1,(1+actual/desired)/2];
   }finally{await source.release();}
-  Store.text(this.folder+'/parameters.json',JSON.stringify(d));await this.edit(this.folder);
+  Store.text(this.folder+'/parameters.json',JSON.stringify(d));await this.store!.save(this.folder,d,false);this.status='已保存 · '+look.name;this.refresh();
  }
  private async edit(folder: string): Promise<void> {
   this.renderToken++;this.pending=false;
@@ -101,7 +110,7 @@ struct Index {
   await this.camera.close();this.ready=false;this.folder=folder;this.doc=this.store!.params(folder);
   this.history=[JSON.stringify(this.doc)];this.cursor=0;
   if(fs.accessSync(folder+'/history.json')){try{const saved=JSON.parse(Store.read(folder+'/history.json')) as HistoryState;if(saved.cursor>=0&&saved.cursor<saved.states.length&&saved.states[saved.cursor]===JSON.stringify(this.doc)){this.history=saved.states;this.cursor=saved.cursor;}}catch(e){this.status='历史文件不可读；已恢复最终参数快照';}}
-  this.page='Editor';
+  this.previewLut=await this.store!.looks.forPhoto(folder);this.page='Editor';
   const meta=this.store!.meta(folder);this.sceneLighting=meta.scene.lighting.join(',');this.sceneSubjects=meta.scene.subjects.join(',');this.rating=meta.scene.rating||0;this.notes=meta.scene.notes;this.styleFeatures=meta.scene.style_features;this.satisfied=meta.scene.satisfied||false;
   const old=this.before;this.before=await Imaging.decode(folder+'/original.jpg',1200);await old?.release();
   this.zoom=1;this.panX=0;this.panY=0;this.preview();
@@ -115,7 +124,7 @@ struct Index {
   this.rendering=true;
   try{while(this.pending && this.page==='Editor'){
    this.pending=false;const token=this.renderToken;const snapshot=clone(this.doc);
-   try{const output=await Imaging.render(this.folder+'/original.jpg',snapshot,640);
+   try{const output=await Imaging.render(this.folder+'/original.jpg',snapshot,640,this.previewLut);
     if(token===this.renderToken && this.page==='Editor'){
      const comparison=await Imaging.decode(this.folder+'/original.jpg',640);
      try{await Imaging.geometry(comparison,snapshot);}catch(e){await comparison.release();await output.release();throw e;}
@@ -133,8 +142,22 @@ struct Index {
   this.saveScene();await this.store!.save(this.folder,clone(this.doc),approved);this.status=approved?'已确认训练样本：原图与成片、参数配对保存':'草稿成片已保存';
  }
  private refresh(): void {
-  this.samples=this.store!.all().filter((folder: string)=>{const m=this.store!.meta(folder);return (this.filterStatus==='all'||m.status===this.filterStatus) && JSON.stringify(m.scene).toLowerCase().includes(this.filter.toLowerCase()) && m.capture.device_model.toLowerCase().includes(this.filterDevice.toLowerCase()) && m.capture.captured_at.startsWith(this.filterDate);});this.selected=[];this.samplePage=0;
-  this.presets=fs.listFileSync(this.context().filesDir+'/presets').filter((f: string)=>f.endsWith('.json'));
+  this.samples=this.store!.all().filter((folder:string)=>fs.accessSync(folder+'/edited.png')||(!fs.accessSync(folder+'/look.json')&&fs.accessSync(folder+'/original.jpg')));
+  this.presets=fs.listFileSync(this.context().filesDir+'/presets').filter((f:string)=>f.endsWith('.json'));
+ }
+ private async openLuts(): Promise<void> {this.chosenIndex=this.films.findIndex((v:FilmLut)=>v.id===this.store!.looks.selected().id);await this.navigate('LUT');}
+ private async finishLut(): Promise<void> {await this.store!.looks.select(this.films[this.chosenIndex]);this.lutName=this.films[this.chosenIndex].name;await this.navigate('Camera');}
+ private async openPhoto(index:number): Promise<void> {
+  if(index<0||index>=this.samples.length)return;await this.navigate('Photo');this.photoIndex=index;
+  const token=this.renderToken;const folder=this.samples[index];const file=folder+(fs.accessSync(folder+'/edited.png')?'/edited.png':'/original.jpg');
+  const pixel=await Imaging.decode(file,2048);if(this.page==='Photo'&&token===this.renderToken){const old=this.browsing;this.browsing=pixel;this.zoom=1;this.panX=0;this.panY=0;await old?.release();}else await pixel.release();
+ }
+ onBackPress(): boolean {
+  if(this.busy)return true;
+  if(this.page==='LUT'){this.run(async()=>this.finishLut());return true;}
+  if(this.page==='Photo'){this.run(async()=>this.navigate('Dataset'));return true;}
+  if(this.page!=='Camera'){this.run(async()=>this.navigate('Camera'));return true;}
+  return false;
  }
  private visibleControls(): Control[] {
   return controls().filter((c: Control)=>this.category==='基础'?!c.path.includes('.'):this.category==='分色'?c.path.startsWith('hsl.'):this.category==='分级'?c.path.startsWith('color_grading.'):this.category==='质感'?c.path.startsWith('texture.'):false);
@@ -179,13 +202,14 @@ struct Index {
  @Builder
  cameraUI() {
   Row(){Button('闪光').fontSize(13).backgroundColor('#222627').onClick(()=>{try{this.camera.setFlash(!this.flash);this.flash=!this.flash;}catch(e){this.status=(e as Error).message;}})
-   Column({space:4}){Text('G23 LAB').fontSize(19).fontWeight(FontWeight.Medium);Text('影像实验室').fontSize(11).fontColor('#949C9B')}.layoutWeight(1)
+   Button(this.lutName+' ⌄').fontSize(16).fontColor('#B8C7A8').backgroundColor('#0F1112').layoutWeight(1).accessibilityText('选择 LUT，当前：'+this.lutName).onClick(()=>this.run(async()=>this.openLuts()))
    Button('设置').fontSize(13).backgroundColor('#222627').onClick(()=>this.settings=!this.settings)
   }.height(58).width('100%')
   if(this.settings){Column({space:10}){
    Row(){Text('构图网格').layoutWeight(1);Toggle({type:ToggleType.Switch,isOn:this.grid}).onChange((v:boolean)=>this.grid=v)}
    Text(this.status).fontSize(12).fontColor('#949C9B')
    Text('原图始终保留；导出可另存到系统文件。').fontSize(12)
+   Button('最近照片的调色与数据').onClick(()=>this.run(async()=>{const recent=this.store!.all()[0];if(recent)await this.edit(recent);}));Button('导出全部照片与分析').onClick(()=>this.run(async()=>{this.selected=this.store!.all();await this.exportSelected();}))
   }.padding(16).backgroundColor('#191C1D').borderRadius(16)}
   Stack() {
    XComponent({id:'camera',type:XComponentType.SURFACE,controller:this.surface})
@@ -247,6 +271,7 @@ struct Index {
    Row(){Text('参数').fontSize(12).fontColor('#949C9B').layoutWeight(1);Text('原始').fontSize(12).fontColor('#949C9B').layoutWeight(1);Text('调色后').fontSize(12).fontColor('#949C9B').layoutWeight(1)}
    Text('拍摄记录 · 两侧共用同一次拍摄').fontSize(12).fontColor('#B8C7A8')
    ForEach(this.captureRows(),(p:DisplayPair)=>{Row({space:6}){Text(p.label).fontSize(11).layoutWeight(1);Text(p.before).fontSize(11).layoutWeight(1);Text(p.after).fontSize(11).layoutWeight(1)}.padding({top:8,bottom:8})},(p:DisplayPair)=>p.label)
+   Text('胶卷色调：'+(this.store!.looks.look(this.folder)?.name||'未应用')).fontSize(12).fontColor('#B8C7A8')
    Text('色调参数 · 原始基线与当前快照').fontSize(12).fontColor('#B8C7A8')
    ForEach(this.dataRows(),(p:ParameterPair)=>{Row({space:6}){Text(p.label).fontSize(11).layoutWeight(1);Text(JSON.stringify(p.before)).fontSize(11).layoutWeight(1);Text(JSON.stringify(p.after)).fontSize(11).layoutWeight(1)}.padding({top:8,bottom:8})},(p:ParameterPair)=>p.parameter)
    Text('图像统计 · 保存后生成，固定网格最多 256×256 点').fontSize(12).fontColor('#B8C7A8')
@@ -272,30 +297,24 @@ struct Index {
  }
  @Builder
  datasetUI() {
-  Row(){Select([{value:'全部照片'},{value:'已确认'},{value:'草稿'}]).value(['全部照片','已确认','草稿'][['all','approved','draft'].indexOf(this.filterStatus)]).onSelect((i:number,_v:string)=>{this.filterStatus=['all','approved','draft'][i];this.refresh();});Button('全选').onClick(()=>this.selected=this.samples.slice())}
-  TextInput({text:this.filter,placeholder:'场景 / 内容标签'}).onChange((s:string)=>{this.filter=s;this.refresh();})
-  TextInput({text:this.filterDevice,placeholder:'设备型号'}).onChange((s:string)=>{this.filterDevice=s;this.refresh();})
-  TextInput({text:this.filterDate,placeholder:'日期 YYYY-MM-DD / 年月前缀'}).onChange((s:string)=>{this.filterDate=s;this.refresh();})
-  Grid(){ForEach(this.samples.slice(this.samplePage*36,(this.samplePage+1)*36),(folder:string)=>{GridItem(){Column(){
-   Row({space:8}){
-    Column(){Text('原图').fontSize(11);Image('file://'+folder+(fs.accessSync(folder+'/thumbnail_before.jpg')?'/thumbnail_before.jpg':'/original.jpg')).height(140).objectFit(ImageFit.Contain)}.layoutWeight(1)
-    Column(){Text('调色后').fontSize(11);if(fs.accessSync(folder+'/thumbnail_after.jpg')){Image('file://'+folder+'/thumbnail_after.jpg').height(140).objectFit(ImageFit.Contain)}else{Text('待调色').height(140).fontColor('#949C9B')}}.layoutWeight(1)
-   }.width('100%')
-   Text(folder.split('/').pop()||'').fontSize(10).maxLines(1)
-   Text(this.store!.meta(folder).status==='approved'?'已确认':'草稿').fontSize(11)
-   Toggle({type:ToggleType.Checkbox,isOn:this.selected.includes(folder)}).onChange((v:boolean)=>{this.selected=v?[...this.selected,folder]:this.selected.filter((s:string)=>s!==folder);})
-   Button('重新编辑 / 对照').onClick(()=>this.run(async()=>this.edit(folder)))
-  }}} ,(folder:string)=>folder)}.columnsTemplate('1fr').columnsGap(8).rowsGap(8).layoutWeight(1)
-  Row(){Button('上一页').enabled(this.samplePage>0).onClick(()=>this.samplePage--);Text(`${this.samplePage+1} / ${Math.max(1,Math.ceil(this.samples.length/36))}`);Button('下一页').enabled((this.samplePage+1)*36<this.samples.length).onClick(()=>this.samplePage++)}
-  Text('未勾选时导出当前筛选结果').fontSize(11).fontColor('#949C9B')
-  Button('一键导出 · 保存到文件').backgroundColor('#B8C7A8').fontColor('#0F1112').onClick(()=>this.run(async()=>this.exportSelected()))
-  Button('删除所选').onClick(()=>AlertDialog.show({message:'永久删除所选样本和原图？',primaryButton:{value:'取消',action:():void=>{}},secondaryButton:{value:'删除',action:():void=>{this.selected.forEach((folder:string)=>fs.rmdirSync(folder));this.refresh();}}}))
+  Grid(){ForEach(this.samples,(folder:string)=>{GridItem(){Image('file://'+folder+(fs.accessSync(folder+'/thumbnail_after.jpg')?'/thumbnail_after.jpg':'/original.jpg')).width('100%').aspectRatio(1).objectFit(ImageFit.Cover).onClick(()=>this.run(async()=>this.openPhoto(this.samples.indexOf(folder))))}},(folder:string)=>folder)}.columnsTemplate('1fr 1fr 1fr').columnsGap(4).rowsGap(4).layoutWeight(1)
+ }
+ @Builder
+ photoUI() {
+  if(this.browsing){Image(this.browsing).objectFit(ImageFit.Contain).width('100%').layoutWeight(1).scale({x:this.zoom,y:this.zoom}).translate({x:this.panX,y:this.panY}).clip(true)
+   .gesture(GestureGroup(GestureMode.Parallel,PinchGesture().onActionStart(()=>this.zoomBase=this.zoom).onActionUpdate((e:GestureEvent)=>this.zoom=Math.max(1,Math.min(8,this.zoomBase*e.scale))),PanGesture().onActionStart(()=>{this.baseX=this.panX;this.baseY=this.panY;}).onActionUpdate((e:GestureEvent)=>{if(this.zoom>1){this.panX=this.baseX+e.offsetX;this.panY=this.baseY+e.offsetY;}}).onActionEnd((e:GestureEvent)=>{if(this.zoom<=1&&Math.abs(e.offsetX)>64)this.run(async()=>this.openPhoto(this.photoIndex+(e.offsetX<0?1:-1)));})))}else{Blank().layoutWeight(1)}
+ }
+ @Builder
+ lutUI() {
+  LutWheel({films:this.films,initialIndex:this.chosenIndex,onSelect:(index:number):void=>{this.chosenIndex=index;}}).layoutWeight(1).width('100%')
+  Text('上下拨动 · 自动吸附 · 箭头指向当前选择').fontSize(11).fontColor('#949C9B').height(40)
+  Button('使用并返回拍摄').width('100%').height(48).fontColor('#0F1112').backgroundColor('#B8C7A8').onClick(()=>this.run(async()=>this.finishLut()))
  }
  build() {
   Column({space:8}){
-   if(this.page!=='Camera'){Row(){Button('返回相机').onClick(()=>this.run(async()=>this.navigate('Camera')));Text(this.page==='Editor'?'影像调色':'影像相册').fontSize(20).layoutWeight(1);Button('相册').onClick(()=>this.run(async()=>this.navigate('Dataset')))}}
-   if(this.page==='Camera'){this.cameraUI()}else if(this.page==='Editor'){this.editorUI()}else{this.datasetUI()}
-   if(this.busy || this.page!=='Camera'){Text(this.busy?'处理中…':this.status).fontSize(11).fontColor('#949C9B').maxLines(2).width('100%')}
+   if(this.page!=='Camera'){Row(){Button('返回').fontSize(13).backgroundColor('#222627').onClick(()=>this.run(async()=>{if(this.page==='LUT')await this.finishLut();else await this.navigate(this.page==='Photo'?'Dataset':'Camera');}));Text(this.page==='LUT'?'胶卷色调':this.page==='Photo'?'照片':this.page==='Editor'?'影像调色':'相册').fontSize(20).fontColor('#EBEBE2').layoutWeight(1)}}
+   if(this.page==='Camera'){this.cameraUI()}else if(this.page==='LUT'){this.lutUI()}else if(this.page==='Photo'){this.photoUI()}else if(this.page==='Editor'){this.editorUI()}else{this.datasetUI()}
+   if(this.busy || this.page==='Editor'){Text(this.busy?'处理中…':this.status).fontSize(11).fontColor('#949C9B').maxLines(2).width('100%')}
   }.width('100%').height('100%').padding({left:12,right:12,top:32,bottom:24}).backgroundColor('#0F1112').enabled(!this.busy)
  }
 }

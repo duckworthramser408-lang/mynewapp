@@ -7,3 +7,6 @@ gradlew text eol=lf
 *.bat text eol=crlf
 *.apk binary
 *.jar binary
+
+# Preserve user LUT bytes so file checksums survive every checkout.
+*.cube binary

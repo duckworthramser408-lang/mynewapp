@@ -111,7 +111,21 @@ def validate_comparison(folder, sid, params):
         key = pair['parameter']
         if key not in original or pair['before'] != original[key] or pair['after'] != edited[key]:
             raise ValueError('comparison parameter pair mismatch')
+    if comparison.get('look')!=validate_look(folder): raise ValueError('comparison LUT snapshot mismatch')
     return comparison
+
+def validate_look(folder):
+    path=folder/'look.json';cube=folder/'look.cube'
+    if not path.exists() and not cube.exists(): return None
+    look=read_json(safe_file(folder,'look.json'));file=safe_file(folder,'look.cube')
+    if (look.get('look_pipeline_version')!='cube_srgb_trilinear_1.0' or look.get('file')!='look.cube' or
+        look.get('input_color_space')!='sRGB' or look.get('applied_after')!='g23_parameters_1.0.0' or look.get('intensity')!=1.0):
+        raise ValueError('unsupported LUT processing stage')
+    if sha256(file)!=look['sha256']: raise ValueError('LUT checksum mismatch')
+    from tools.import_luts import parse_cube
+    size,_,_,_=parse_cube(file.read_text('utf-8-sig'))
+    if size!=look['grid_size']: raise ValueError('LUT grid mismatch')
+    return look
 
 def inspect_sample(folder):
     if not folder.is_dir() or folder.is_symlink(): raise ValueError('invalid sample directory')
@@ -125,6 +139,7 @@ def inspect_sample(folder):
     hashes = meta.get('sha256',{})
     names = list(REQUIRED)
     if (folder/'original.dng').is_file(): names.append('original.dng')
+    if validate_look(folder) is not None:names.extend(('look.json','look.cube'))
     sidecars = ('original_parameters.json', 'comparison.json')
     if any((folder/n).exists() or n in hashes for n in sidecars):
         names.extend(sidecars)
@@ -175,6 +190,7 @@ def export_dataset(source, destination, approved_only=True, progress=lambda done
                         hashes[rel+name]=digest.hexdigest()
                         if hashes[rel+name]!=meta['sha256'][name]:raise ValueError('source changed during export')
                 rows.append({'sample_id':sid,'original':rel+'original.jpg','edited':rel+'edited.png','parameters':rel+'parameters.json','metadata':rel+'metadata.json','scene':meta['scene'],'device_model':meta['capture'].get('device_model'),'rating':meta['scene'].get('rating'),'approved':meta['status']=='approved','render_pipeline_version':PIPELINE})
+                if 'look.json' in names:rows[-1].update(look=rel+'look.json',lut=rel+'look.cube',look_pipeline_version='cube_srgb_trilinear_1.0')
                 if 'comparison.json' in names:
                     rows[-1].update(original_parameters=rel+'original_parameters.json', comparison=rel+'comparison.json')
                     comparison=read_json(folder/'comparison.json')
@@ -223,6 +239,12 @@ def analyze(root, output):
         for name,expected in meta['sha256'].items():
             if manifest['sha256'].get(expected_prefix+name)!=expected: raise ValueError('metadata/manifest mismatch')
         params=validate_parameters(read_json(safe_file(root,row['parameters'])))
+        look=validate_look(root/expected_prefix)
+        if look is not None:
+            for key,name in [('look','look.json'),('lut','look.cube')]:
+                if row.get(key)!=expected_prefix+name or row[key] not in manifest['sha256']:raise ValueError('unverified LUT reference')
+            if row.get('look_pipeline_version')!=look['look_pipeline_version']:raise ValueError('LUT version mismatch')
+        elif 'look' in row or 'lut' in row:raise ValueError('missing referenced LUT')
         if row['render_pipeline_version']!=params['render_pipeline_version']: raise ValueError('pipeline mismatch')
         for key,v in flatten(params['parameters']).items(): values.setdefault(key,[]).append(v)
         # Relative references to files, no image Base64 and no image decode required.

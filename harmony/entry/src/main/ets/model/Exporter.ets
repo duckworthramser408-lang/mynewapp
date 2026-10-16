@@ -13,6 +13,7 @@ class Row {
  parameters: string = '';
  original_parameters: string = '';
  comparison: string = '';
+ look?: string; lut?: string; look_pipeline_version?: string;
  metadata: string = '';
  scene: Object = {};
  device_model: string = '';
@@ -34,7 +35,7 @@ export class Exporter {
     if(!/^G23_[A-Za-z0-9_-]+$/.test(meta.sample_id) || folder.split('/').pop()!==meta.sample_id || ids.includes(meta.sample_id)) throw new Error('样本 ID 重复或不匹配');
     ids.push(meta.sample_id);
     const hashes=meta.sha256 as Hashes;
-    const names=['original.jpg','edited.png','thumbnail_before.jpg','thumbnail_after.jpg','parameters.json','original_parameters.json','comparison.json'];
+    const names=['original.jpg','edited.png','thumbnail_before.jpg','thumbnail_after.jpg','parameters.json','original_parameters.json','comparison.json',...(store.looks.look(folder)?['look.json','look.cube']:[])];
     const expected=names.map((name: string)=>hashes[name]);
     if(originals.includes(expected[0])) throw new Error('重复原图');originals.push(expected[0]);
     const relative='samples/'+meta.sample_id+'/';fs.mkdirSync(root+'/'+relative);
@@ -45,7 +46,7 @@ export class Exporter {
     }
     fs.copyFileSync(folder+'/metadata.json',root+'/'+relative+'metadata.json');
     manifest.push(JSON.stringify(relative+'metadata.json')+':'+JSON.stringify(await Store.hash(root+'/'+relative+'metadata.json')));
-    const row=new Row();row.sample_id=meta.sample_id;row.original=relative+'original.jpg';row.edited=relative+'edited.png';row.parameters=relative+'parameters.json';row.metadata=relative+'metadata.json';row.original_parameters=relative+'original_parameters.json';row.comparison=relative+'comparison.json';row.scene=meta.scene;row.device_model=meta.capture.device_model;row.rating=meta.scene.rating;row.approved=meta.status==='approved';rows.push(JSON.stringify(row));
+    const row=new Row();row.sample_id=meta.sample_id;row.original=relative+'original.jpg';row.edited=relative+'edited.png';row.parameters=relative+'parameters.json';row.metadata=relative+'metadata.json';row.original_parameters=relative+'original_parameters.json';row.comparison=relative+'comparison.json';row.scene=meta.scene;row.device_model=meta.capture.device_model;row.rating=meta.scene.rating;row.approved=meta.status==='approved';if(store.looks.look(folder)){row.look=relative+'look.json';row.lut=relative+'look.cube';row.look_pipeline_version='cube_srgb_trilinear_1.0';}rows.push(JSON.stringify(row));
     // Full numeric parameter table, curve arrays stay in referenced JSON.
     const values=controlsForCsv(doc);summaries.push([meta.sample_id,...values,relative+'parameters.json'].map((v: string) => '"'+v.replace(/"/g,'""')+'"').join(','));
     parameterPairs(store.originalParams(folder),doc).forEach((p: ParameterPair)=>pairs.push([meta.sample_id,p.parameter,p.label,JSON.stringify(p.before),JSON.stringify(p.after)].map((v: string)=>'"'+v.replace(/"/g,'""')+'"').join(',')));

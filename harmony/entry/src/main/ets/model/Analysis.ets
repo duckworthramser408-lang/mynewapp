@@ -1,5 +1,6 @@
 import { image } from '@kit.ImageKit';
 import { Document, Capture, clone } from './Model';
+import { Look } from './LutLibrary';
 export type ParameterValue = number | number[] | number[][] | null;
 export class ParameterPair {
  parameter: string; label: string; before: ParameterValue; after: ParameterValue;
@@ -92,6 +93,7 @@ export class AnalysisImage {
  constructor(file: string,doc: Document,statistics: Statistics){this.image=file;this.parameters=clone(doc);this.statistics=statistics;}
 }
 export class Comparison {
+ look: Look | null = null;
  analysis_schema_version: string = '1.0'; sample_id: string; render_pipeline_version: string = '1.0.0';
  comparison_basis: string = 'original decoded with the SAME crop and rotation as edited; source file remains unchanged';
  capture: Capture; before: AnalysisImage; after: AnalysisImage; parameter_pairs: ParameterPair[];

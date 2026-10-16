@@ -9,6 +9,7 @@ import android.os.*
 import android.view.*
 import android.widget.*
 import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.*
@@ -45,6 +46,10 @@ class MainActivity : ComponentActivity() {
     private var history: EditHistory? = null
     private var photo: PhotoView? = null
     private var previewSource: Bitmap? = null
+    private var previewLut: CubeLut? = null
+    private var pickerWheel: FilmWheelView? = null
+    private var fullPhoto: FullPhotoView? = null
+    private var albumPhotos = listOf<File>()
     private val generation = AtomicInteger(0)
     private var panel: TextView? = null
     private var screen = ""
@@ -154,6 +159,16 @@ class MainActivity : ComponentActivity() {
         ratio = preferences.getString("ratio", "4:3") ?: "4:3"
         window.statusBarColor = LabUi.background
         window.navigationBarColor = LabUi.background
+        onBackPressedDispatcher.addCallback(this) {
+            if (!busy)
+                when (screen) {
+                    "LUT" -> finishLutSelection()
+                    "Photo" -> datasetPage()
+                    "Dataset",
+                    "Editor" -> cameraPage()
+                    else -> finish()
+                }
+        }
         cameraPage()
     }
 
@@ -191,6 +206,13 @@ class MainActivity : ComponentActivity() {
     private fun row(vararg views: View) = LabUi.weightedRow(this, *views)
 
     private fun page(title: String) {
+        fullPhoto?.let {
+            val old = it.bitmap
+            it.bitmap = null
+            old?.recycle()
+        }
+        fullPhoto = null
+        if (title != "LUT") pickerWheel = null
         screen = title
         generation.incrementAndGet()
         root = column().apply { setBackgroundColor(LabUi.background) }
@@ -222,7 +244,10 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     busy = false
                     dialog.dismiss()
-                    if (!isDestroyed) error(e)
+                    if (!isDestroyed) {
+                        if (screen == "Camera" && capture != null) cameraLayout?.ready()
+                        error(e)
+                    }
                 }
             }
         }
@@ -238,6 +263,7 @@ class MainActivity : ComponentActivity() {
         editorControls = null
         val old = previewSource
         previewSource = null
+        previewLut = null
         worker.execute {
             if (before !== old) before?.recycle()
             after?.recycle()
@@ -253,6 +279,7 @@ class MainActivity : ComponentActivity() {
         val layout =
             CameraLayout(
                 this,
+                onLut = { if (!busy) lutPickerPage() },
                 onShoot = { if (!busy) shoot() },
                 onAlbum = { if (!busy) datasetPage() },
                 onFlip = {
@@ -295,13 +322,14 @@ class MainActivity : ComponentActivity() {
             )
         cameraLayout = layout
         root.addView(layout, LinearLayout.LayoutParams(-1, -1))
+        layout.setLutName(store.looks.selected().name)
         layout.selectedRatio = ratio
         layout.setFlash(flash)
         layout.exposurePanel.visibility =
             if (preferences.getBoolean("exposure", false)) View.VISIBLE else View.GONE
         val seek = layout.exposureSlider
         val ev = layout.exposureLabel
-        store.all().firstOrNull()?.let { target ->
+        store.photos().firstOrNull()?.let { target ->
             worker.execute {
                 runCatching {
                         Imaging.decode(
@@ -485,15 +513,59 @@ class MainActivity : ComponentActivity() {
         body.addView(text("设备能力", 13f).apply { setTextColor(LabUi.accent) })
         body.addView(text(capabilityText, 12f))
         body.addView(text("画幅选择采用无损参数裁切，原图始终保留。照片保存在应用相册内；一键导出可另存到系统文件。", 12f))
-        AlertDialog.Builder(this)
-            .setTitle("相机设置")
-            .setView(body)
-            .setPositiveButton("完成") { _, _ -> cameraPage() }
-            .show()
+        val settingsDialog =
+            AlertDialog.Builder(this)
+                .setTitle("相机设置")
+                .setView(ScrollView(this).apply { addView(body) })
+                .setPositiveButton("完成") { _, _ -> cameraPage() }
+                .create()
+        body.addView(text("照片工具", 13f).apply { setTextColor(LabUi.accent) })
+        body.addView(
+            button("最近照片的调色与数据") {
+                settingsDialog.dismiss()
+                store.all().firstOrNull()?.let { openEditor(it) } ?: message("请先拍摄一张照片")
+            }
+        )
+        body.addView(
+            button("导出全部照片与分析") {
+                settingsDialog.dismiss()
+                exportFiles(store.all())
+            }
+        )
+        settingsDialog.show()
+    }
+
+    private fun lutPickerPage() {
+        provider?.unbindAll()
+        camera = null
+        capture = null
+        leaveEditor()
+        page("LUT")
+        val items = store.looks.items
+        val selected = store.looks.selected()
+        val wheel =
+            FilmWheelView(this, items, items.indexOfFirst { it.id == selected.id }.coerceAtLeast(0))
+        pickerWheel = wheel
+        root.addView(LabUi.header(this, "胶卷色调", "你的 ${items.size} 款 LUT", { finishLutSelection() }))
+        root.addView(wheel, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(
+            LabUi.label(this, "上下拨动 · 自动吸附 · 箭头指向当前选择").apply {
+                gravity = Gravity.CENTER
+                setPadding(0, 12.dp(), 0, 16.dp())
+            }
+        )
+        root.addView(LabUi.button(this, "使用并返回拍摄", true) { finishLutSelection() })
+    }
+
+    private fun finishLutSelection() {
+        pickerWheel?.finishSelection()?.let { store.looks.select(it) }
+        cameraPage()
     }
 
     private fun shoot() {
         val output = capture ?: return
+        val captureLook = store.looks.selected()
+        val captureRatio = ratio
         val target = store.newCapture()
         busy = true
         cameraLayout?.status("正在拍摄")
@@ -524,12 +596,13 @@ class MainActivity : ComponentActivity() {
                     val id =
                         camera?.let { Camera2CameraInfo.from(it.cameraInfo).cameraId } ?: "unknown"
                     background(
-                        "保存原始照片",
+                        "正在应用 ${captureLook.name} 胶卷色调",
                         {
                             store.initialize(target, id)
+                            store.looks.attach(target, captureLook)
                             val image = Imaging.decode(File(target, "original.jpg"), 1024)
                             val aspect =
-                                when (ratio) {
+                                when (captureRatio) {
                                     "3:2" -> 1.5
                                     "1:1" -> 1.0
                                     else -> 4.0 / 3
@@ -551,9 +624,16 @@ class MainActivity : ComponentActivity() {
                                 .getJSONObject("geometry")
                                 .put("crop", crop)
                             atomicText(File(target, "parameters.json"), params.toString(2))
+                            store.save(target, params, false)
                         },
                     ) {
-                        openEditor(target)
+                        cameraPage()
+                        Toast.makeText(
+                                this@MainActivity,
+                                "已保存 · ${captureLook.name}",
+                                Toast.LENGTH_SHORT,
+                            )
+                            .show()
                     }
                 }
             }
@@ -693,9 +773,11 @@ class MainActivity : ComponentActivity() {
         val token = generation.get()
         worker.execute {
             try {
+                val lut = store.looks.forPhoto(target)
                 val original = Imaging.decode(File(target, "original.jpg"), 640)
                 runOnUiThread {
                     if (token == generation.get()) {
+                        previewLut = lut
                         previewSource = original
                         view.before = original
                         requestRender()
@@ -736,11 +818,12 @@ class MainActivity : ComponentActivity() {
         val source = previewSource ?: return
         val view = photo ?: return
         val snapshot = JSONObject(doc.toString())
+        val lut = previewLut
         val token = generation.incrementAndGet()
         worker.execute {
             if (token != generation.get()) return@execute
             try {
-                val result = Imaging.render(source, snapshot)
+                val result = Imaging.render(source, snapshot, lut)
                 val geometric = Imaging.geometry(source, snapshot)
                 val aligned =
                     if (geometric === source) source.copy(Bitmap.Config.ARGB_8888, false)
@@ -1120,7 +1203,7 @@ class MainActivity : ComponentActivity() {
         val analysis =
             runCatching {
                     store.comparison(target)?.also {
-                        AnalysisData.validate(it, target.name, before, snapshot)
+                        AnalysisData.validate(it, target.name, before, snapshot, store.look(target))
                     }
                 }
                 .getOrNull()
@@ -1133,6 +1216,7 @@ class MainActivity : ComponentActivity() {
                 before,
                 snapshot,
                 analysis,
+                store.look(target),
             )
         body.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
         val actions =
@@ -1209,217 +1293,48 @@ class MainActivity : ComponentActivity() {
         provider?.unbindAll()
         leaveEditor()
         page("Dataset")
-        val selected = mutableSetOf<File>()
-        var filterStatus = "all"
-        var scene = ""
-        var device = ""
-        var date = ""
-        var pageIndex = 0
-        var refreshToken = 0
-        val list = column()
-        val count = LabUi.label(this, "")
-        val selection = LabUi.label(this, "")
-        val thumbs = mutableListOf<Bitmap>()
-        fun matching() =
-            store.all().filter {
-                val m = store.metadata(it)
-                (filterStatus == "all" || m.getString("status") == filterStatus) &&
-                    m.getJSONObject("scene").toString().contains(scene, true) &&
-                    m.getJSONObject("capture").optString("device_model").contains(device, true) &&
-                    m.getJSONObject("capture").optString("captured_at").startsWith(date)
+        root.addView(LabUi.header(this, "相册", back = { cameraPage() }))
+        val gallery = PhotoGallery(this, worker) { index -> photoPage(albumPhotos, index) }
+        root.addView(gallery, LinearLayout.LayoutParams(-1, 0, 1f))
+        val token = generation.get()
+        worker.execute {
+            val folders = store.photos()
+            runOnUiThread {
+                if (screen == "Dataset" && token == generation.get()) {
+                    albumPhotos = folders
+                    gallery.submit(folders)
+                    if (folders.isEmpty())
+                        Toast.makeText(this, "还没有照片，拍下你的第一卷", Toast.LENGTH_SHORT).show()
+                }
             }
-        fun selectedCount() {
-            selection.text = if (selected.isEmpty()) "未勾选时导出当前筛选结果" else "已选择 ${selected.size} 张照片"
         }
-        fun refresh(reset: Boolean = true) {
-            if (reset) {
-                selected.clear()
-                pageIndex = 0
-            }
-            selectedCount()
-            refreshToken++
-            val token = refreshToken
-            list.removeAllViews()
-            thumbs.forEach { it.recycle() }
-            thumbs.clear()
-            val matches = matching()
-            val pages = maxOf(1, (matches.size + 11) / 12)
-            pageIndex = pageIndex.coerceIn(0, pages - 1)
-            count.text = "${matches.size} 张照片 · 第 ${pageIndex+1} / $pages 页"
-            if (matches.isEmpty()) {
-                list.addView(
-                    text("还没有照片\n点击左上角返回相机，开始记录。", 16f).apply {
-                        gravity = Gravity.CENTER
-                        setPadding(0, 80.dp(), 0, 80.dp())
-                    }
-                )
-            }
-            matches.drop(pageIndex * 12).take(12).forEach { target ->
-                val meta = store.metadata(target)
-                val card =
-                    column().apply {
-                        background = LabUi.shape(LabUi.surface, 16.dp())
-                        setPadding(12.dp(), 10.dp(), 12.dp(), 12.dp())
-                    }
-                val check =
-                    CheckBox(this).apply {
-                        text =
-                            "${meta.getJSONObject("capture").optString("captured_at").take(19).replace('T',' ')} · ${if(meta.getString("status")=="approved")"已确认" else "草稿"}"
-                        textSize = 12f
-                        setTextColor(LabUi.muted)
-                        isChecked = selected.contains(target)
-                        setOnCheckedChangeListener { _, checked ->
-                            if (checked) selected.add(target) else selected.remove(target)
-                            selectedCount()
-                        }
-                    }
-                card.addView(check)
-                val images = LabUi.row(this)
-                listOf("原图" to "thumbnail_before.jpg", "调色后" to "thumbnail_after.jpg").forEach {
-                    (label, name) ->
-                    val half = column()
-                    half.addView(
-                        LabUi.label(this, if (label == "调色后") "调色后 · 已保存" else label).apply {
-                            setPadding(0, 0, 0, 6.dp())
-                        }
-                    )
-                    val frame =
-                        FrameLayout(this).apply {
-                            background = LabUi.shape(LabUi.raised, 10.dp())
-                            clipToOutline = true
-                        }
-                    val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
-                    frame.addView(iv, FrameLayout.LayoutParams(-1, -1))
-                    half.addView(frame, LinearLayout.LayoutParams(-1, 140.dp()))
-                    val file =
-                        File(target, name).takeIf { it.isFile }
-                            ?: if (label == "原图") File(target, "original.jpg") else null
-                    if (file == null)
-                        frame.addView(
-                            LabUi.text(this, "待调色", 12f, LabUi.muted).apply {
-                                gravity = Gravity.CENTER
-                            },
-                            FrameLayout.LayoutParams(-1, -1),
-                        )
-                    else
-                        worker.execute {
-                            runCatching { Imaging.decode(file, 320) }
-                                .onSuccess { b ->
-                                    runOnUiThread {
-                                        if (
-                                            screen == "Dataset" &&
-                                                token == refreshToken &&
-                                                iv.isAttachedToWindow
-                                        ) {
-                                            thumbs.add(b)
-                                            iv.setImageBitmap(b)
-                                        } else b.recycle()
-                                    }
-                                }
-                        }
-                    images.addView(
-                        half,
-                        LinearLayout.LayoutParams(0, -2, 1f).apply {
-                            if (label == "调色后") marginStart = 8.dp()
-                        },
+    }
+
+    private fun photoPage(photos: List<File>, index: Int) {
+        if (index !in photos.indices) return
+        page("Photo")
+        root.addView(LabUi.header(this, "照片", back = { datasetPage() }))
+        val view = FullPhotoView(this) { direction -> photoPage(photos, index + direction) }
+        fullPhoto = view
+        root.addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
+        val token = generation.get()
+        val target = photos[index]
+        worker.execute {
+            runCatching {
+                    Imaging.decode(
+                        File(target, "edited.png").takeIf { it.isFile }
+                            ?: File(target, "original.jpg"),
+                        2048,
                     )
                 }
-                card.addView(images)
-                card.addView(
-                    row(
-                            button("继续调色") { openEditor(target) },
-                            button("并列数据") { showData(target, store.parameters(target)) },
-                        )
-                        .apply { setPadding(0, 10.dp(), 0, 0) }
-                )
-                list.addView(
-                    card,
-                    LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12.dp() },
-                )
-            }
+                .onSuccess { bitmap ->
+                    runOnUiThread {
+                        if (screen == "Photo" && token == generation.get() && fullPhoto === view)
+                            view.bitmap = bitmap
+                        else bitmap.recycle()
+                    }
+                }
+                .onFailure { runOnUiThread { if (token == generation.get()) error(it) } }
         }
-        val filterAction =
-            LabUi.iconButton(this, LabIcon.Kind.FILTER, "筛选与管理") {
-                val form = column().apply { setPadding(20.dp(), 8.dp(), 20.dp(), 8.dp()) }
-                val status =
-                    Spinner(this).apply {
-                        adapter =
-                            ArrayAdapter(
-                                this@MainActivity,
-                                android.R.layout.simple_spinner_dropdown_item,
-                                arrayOf("全部照片", "已确认样本", "草稿"),
-                            )
-                        setSelection(listOf("all", "approved", "draft").indexOf(filterStatus))
-                    }
-                val sf = LabUi.field(this, "场景或内容标签", scene)
-                val df = LabUi.field(this, "设备型号", device)
-                val tf = LabUi.field(this, "日期，例如 2026-10", date)
-                form.addView(status)
-                form.addView(sf)
-                form.addView(df)
-                form.addView(tf)
-                form.addView(
-                    button("全选当前筛选结果") {
-                        selected.addAll(matching())
-                        refresh(false)
-                    }
-                )
-                form.addView(
-                    button("删除已选照片") {
-                        if (selected.isNotEmpty())
-                            AlertDialog.Builder(this)
-                                .setMessage("永久删除已选 ${selected.size} 张照片及其数据？")
-                                .setNegativeButton("取消", null)
-                                .setPositiveButton("删除") { _, _ ->
-                                    selected.toList().forEach { it.deleteRecursively() }
-                                    refresh()
-                                }
-                                .show()
-                    }
-                )
-                AlertDialog.Builder(this)
-                    .setTitle("筛选与管理")
-                    .setView(form)
-                    .setPositiveButton("应用") { _, _ ->
-                        filterStatus =
-                            listOf("all", "approved", "draft")[status.selectedItemPosition]
-                        scene = sf.text.toString()
-                        device = df.text.toString()
-                        date = tf.text.toString()
-                        refresh()
-                    }
-                    .setNegativeButton("关闭", null)
-                    .show()
-            }
-        root.addView(LabUi.header(this, "影像相册", "原图与调色结果并列保存", { cameraPage() }, filterAction))
-        root.addView(count)
-        val scroll = ScrollView(this)
-        scroll.addView(list)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(
-            row(
-                    button("上一页") {
-                        pageIndex--
-                        refresh(false)
-                    },
-                    button("下一页") {
-                        pageIndex++
-                        refresh(false)
-                    },
-                )
-                .apply { setPadding(0, 4.dp(), 0, 4.dp()) }
-        )
-        root.addView(
-            selection.apply {
-                gravity = Gravity.CENTER
-                setPadding(0, 6.dp(), 0, 8.dp())
-            }
-        )
-        root.addView(
-            LabUi.button(this, "一键导出 · 保存到文件", true) {
-                exportFiles(if (selected.isEmpty()) matching() else selected.toList())
-            }
-        )
-        refresh()
     }
 }

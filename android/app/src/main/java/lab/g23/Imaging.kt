@@ -12,6 +12,14 @@ object NativeBridge {
     }
 
     external fun renderInto(source: Bitmap, destination: Bitmap, json: String)
+
+    external fun applyCube(
+        bitmap: Bitmap,
+        table: FloatArray,
+        size: Int,
+        minimum: FloatArray,
+        maximum: FloatArray,
+    )
 }
 
 object Imaging {
@@ -78,16 +86,16 @@ object Imaging {
         return image
     }
 
-    fun render(source: Bitmap, doc: JSONObject): Bitmap {
+    fun render(source: Bitmap, doc: JSONObject, lut: CubeLut? = null): Bitmap {
         val input = geometry(source, doc)
         try {
-            return renderPrepared(input, doc)
+            return renderPrepared(input, doc, lut)
         } finally {
             if (input !== source) input.recycle()
         }
     }
 
-    fun renderPrepared(input: Bitmap, doc: JSONObject): Bitmap {
+    fun renderPrepared(input: Bitmap, doc: JSONObject, lut: CubeLut? = null): Bitmap {
         val identity =
             JSONObject(doc.toString()).apply {
                 getJSONObject("parameters")
@@ -98,6 +106,7 @@ object Imaging {
         val output = Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888)
         try {
             NativeBridge.renderInto(input, output, identity.toString())
+            lut?.apply(output)
             return output
         } catch (e: Throwable) {
             output.recycle()
