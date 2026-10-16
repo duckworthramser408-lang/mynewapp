@@ -18,6 +18,7 @@ struct Work {
     float lo[3]{}, hi[3]{};
     char error[256]{};
     int code = 1;
+    bool lutOnly = false;
 };
 static bool String(napi_env env, napi_value v, std::string &out) {
     size_t n = 0;
@@ -36,15 +37,17 @@ static bool String(napi_env env, napi_value v, std::string &out) {
 static napi_value Render(napi_env env, napi_callback_info info) {
     size_t argc = 8;
     napi_value args[8];
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    void *mode = nullptr;
+    napi_get_cb_info(env, info, &argc, args, nullptr, &mode);
     auto *w = new (std::nothrow) Work;
     if (!w) {
         napi_throw_error(env, nullptr, "memory allocation failed");
         return nullptr;
     }
+    w->lutOnly = mode != nullptr;
     void *bytes = nullptr;
     size_t count = 0;
-    if ((argc != 4 && argc != 8) ||
+    if ((argc != 4 && argc != 8) || (w->lutOnly && argc != 8) ||
         napi_get_arraybuffer_info(env, args[0], &bytes, &count) != napi_ok ||
         napi_get_value_int32(env, args[1], &w->w) != napi_ok ||
         napi_get_value_int32(env, args[2], &w->h) != napi_ok || w->w <= 0 || w->h <= 0 ||
@@ -108,8 +111,13 @@ static napi_value Render(napi_env env, napi_callback_info info) {
         env, nullptr, name,
         [](napi_env, void *data) {
             auto *w = static_cast<Work *>(data);
-            w->code = g23_render(w->input, w->output->data(), w->w, w->h, w->json.c_str(), w->error,
-                                 sizeof(w->error));
+            if (w->lutOnly) {
+                std::memcpy(w->output->data(), w->input, w->output->size());
+                w->code = 0;
+            } else {
+                w->code = g23_render(w->input, w->output->data(), w->w, w->h, w->json.c_str(),
+                                     w->error, sizeof(w->error));
+            }
             if (!w->code && !w->cube.empty())
                 w->code = g23_apply_lut(w->output->data(), w->w, w->h, size_t(w->w) * 4,
                                         w->cube.data(), w->cube.size(), w->cubeSize, w->lo, w->hi,
@@ -178,8 +186,10 @@ static napi_value Validate(napi_env env, napi_callback_info info) {
 static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor d[] = {
         {"render", nullptr, Render, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"develop", nullptr, Render, nullptr, nullptr, nullptr, napi_default,
+         reinterpret_cast<void *>(1)},
         {"validate", nullptr, Validate, nullptr, nullptr, nullptr, napi_default, nullptr}};
-    napi_define_properties(env, exports, 2, d);
+    napi_define_properties(env, exports, 3, d);
     return exports;
 }
 static napi_module module = {1, 0, nullptr, Init, "g23", nullptr, {0}};

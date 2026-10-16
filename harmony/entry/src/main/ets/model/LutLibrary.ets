@@ -1,3 +1,7 @@
+import { taskpool } from '@kit.ArkTS';
+import { CubeTable } from './CubeTable';
+export { CubeTable } from './CubeTable';
+import { parseCubeTask } from './CubeParseTask';
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { preferences } from '@kit.ArkData';
@@ -13,30 +17,20 @@ export class Look {
  sha256: string = ''; file: string = 'look.cube'; grid_size: number = 33;
  input_color_space: string = 'sRGB'; intensity: number = 1; applied_after: string = 'g23_parameters_1.0.0';
 }
-export class CubeTable {
- size: number = 0; minimum: Float32Array = new Float32Array([0,0,0]); maximum: Float32Array = new Float32Array([1,1,1]); values: Float32Array = new Float32Array(0);
- static parse(text: string): CubeTable {
-  if(text.length>8*1024*1024)throw new Error('LUT 文件过大');
-  const cube=new CubeTable();let count=0;const seen: string[]=[];
-  for(const raw of text.replace(/^\uFEFF/,'').split(/\r?\n/)){
-   const line=raw.split('#')[0].trim();if(!line.length)continue;const parts=line.split(/\s+/);const key=parts[0];
-   if(key==='TITLE')continue;
-   if(key==='LUT_3D_SIZE'){
-    if(seen.includes(key)||count!==0||parts.length!==2)throw new Error('LUT 网格声明无效');seen.push(key);cube.size=Number(parts[1]);
-    if(!Number.isInteger(cube.size)||cube.size<2||cube.size>65)throw new Error('LUT 网格不受支持');cube.values=new Float32Array(cube.size**3*3);
-   }else if(key==='DOMAIN_MIN'||key==='DOMAIN_MAX'){
-    if(seen.includes(key)||count!==0||parts.length!==4)throw new Error('LUT 输入范围无效');seen.push(key);const values=new Float32Array(parts.slice(1).map((v:string)=>Number(v)));if(values.some((v:number)=>!Number.isFinite(v)))throw new Error('LUT 输入范围无效');if(key==='DOMAIN_MIN')cube.minimum=values;else cube.maximum=values;
-   }else {
-    if(parts.length!==3||cube.size===0||count+3>cube.values.length)throw new Error('LUT 数据不完整');
-    for(const part of parts){const value=Number(part);if(!Number.isFinite(value)||Math.abs(value)>64)throw new Error('LUT 包含无效数值');cube.values[count++]=value;}
-   }
-  }
-  if(cube.size===0||count!==cube.values.length||cube.minimum.some((v:number,i:number)=>v>=cube.maximum[i]))throw new Error('LUT 数据不完整');return cube;
- }
-}
 export class LutLibrary {
  items: FilmLut[]; private context: common.UIAbilityContext;
  constructor(context: common.UIAbilityContext){this.context=context;const text=util.TextDecoder.create('utf-8').decodeToString(context.resourceManager.getRawFileContentSync('luts/catalog.json'));this.items=(JSON.parse(text) as Catalog).luts;if(!this.items.length)throw new Error('缺少胶卷色调');}
+ private cache: Map<string,CubeTable> = new Map<string,CubeTable>();
+ async table(id: string): Promise<CubeTable> {
+  const hit=this.cache.get(id);if(hit)return hit;
+  const item=this.items.find((v:FilmLut)=>v.id===id);if(!item)throw new Error('找不到这款胶卷');
+  const data=this.context.resourceManager.getRawFileContentSync('luts/'+item.file);
+  const text=util.TextDecoder.create('utf-8').decodeToString(data);
+  const packed=new Float32Array(await taskpool.execute(new taskpool.Task(parseCubeTask,text)) as ArrayBuffer);
+  const table=new CubeTable();table.size=packed[0];table.minimum=packed.slice(1,4);table.maximum=packed.slice(4,7);table.values=packed.slice(7);
+  if(this.cache.size>=3)this.cache.clear();
+  this.cache.set(id,table);return table;
+ }
  selected(): FilmLut {const p=preferences.getPreferencesSync(this.context,{name:'camera'});const id=p.getSync('lut',this.items[0].id) as string;return this.items.find((v:FilmLut)=>v.id===id)||this.items[0];}
  async select(item: FilmLut): Promise<void> {const p=preferences.getPreferencesSync(this.context,{name:'camera'});p.putSync('lut',item.id);await p.flush();}
  async attach(folder: string,item: FilmLut): Promise<void> {

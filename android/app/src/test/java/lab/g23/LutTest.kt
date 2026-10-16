@@ -139,8 +139,8 @@ class LutViewTest {
         bitmap.eraseColor(Color.GRAY)
         Imaging.jpeg(bitmap, File(folder, "original.jpg"))
         bitmap.recycle()
-        val gallery = PhotoGallery(c, java.util.concurrent.Executor { it.run() }) {}
-        gallery.submit(listOf(folder))
+        val gallery = PhotoGallery(c, java.util.concurrent.Executor { it.run() }, {}, {})
+        gallery.submit(listOf(CameraPhoto(folder, "ready", "4:3", 0)))
         layout(gallery, 360, 600)
         assertEquals(1, gallery.adapter!!.itemCount)
         assertEquals(
@@ -148,7 +148,12 @@ class LutViewTest {
             (gallery.layoutManager as androidx.recyclerview.widget.GridLayoutManager).spanCount,
         )
         assertTrue(gallery.childCount > 0)
-        for (i in 0 until gallery.childCount) assertTrue(gallery.getChildAt(i) is ImageView)
+        for (i in 0 until gallery.childCount) {
+            val cell = gallery.getChildAt(i) as android.widget.FrameLayout
+            assertEquals(2, cell.childCount)
+            assertTrue(cell.getChildAt(0) is ImageView)
+            assertTrue(cell.getChildAt(1) is DevelopingView)
+        }
         folder.deleteRecursively()
     }
 

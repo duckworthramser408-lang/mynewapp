@@ -56,7 +56,7 @@ class CameraLayoutTest {
     fun drawsActualNativeCameraLayoutWithoutFabricatedPhoto() {
         val v = camera()
         v.setLutName("理光GR")
-        v.status("允许相机权限，开始拍摄\n照片与数据保存在本机")
+        v.status("允许相机权限，开始拍摄\n照片保存在本机相册")
         place(v, 360, 760)
         val bitmap = Bitmap.createBitmap(360, 760, Bitmap.Config.ARGB_8888)
         v.draw(Canvas(bitmap))

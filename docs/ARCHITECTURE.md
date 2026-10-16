@@ -1,3 +1,15 @@
+# 0.4 相机流程
+
+Android 的拍摄会话由 MainActivity 和 CameraX 管理，PhotoStore 只保存胶卷、画幅和恢复任务所需的内部状态。JPEG 落盘即恢复快门；WorkManager 的独立串行队列在 Activity 之外进行解码、直接 LUT、JPEG 编码和缩略图生成。相册观察状态变化，显示胶卷占位或最终照片。
+
+预览统一原片与胶片的裁切和缩放，只拖动一根竖线。保存走 MediaStore 的 pending／发布流程，失败删除不完整图库资源；Android 9 走系统文档选择器。删除先把应用内整个照片目录原子移走，后台任务完成前再次检查目录，不会复活照片。
+
+鸿蒙源码对应 PhotoStore 应用级队列、TaskPool LUT 解析、异步 N-API 像素处理与 Image Kit JPEG。退出进程后在下次启动恢复；系统相册使用 SaveButton 临时授权。原生鸿蒙尚未经过 SDK 编译，不能将它视作运行验证。
+
+新拍照片不调用旧 SampleStore 的参数、统计或导出流程。下面为保留的旧实验架构资料，不代表当前相机入口或新照片格式。
+
+---
+
 # 工程架构
 
 ```

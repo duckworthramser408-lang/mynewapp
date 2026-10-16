@@ -111,6 +111,28 @@ class LutLibrary(private val context: Context) {
     }
     private val cache = LinkedHashMap<String, CubeLut>(4, .75f, true)
 
+    /** Bundled LUTs are verified and parsed once, shared by every photograph. */
+    @Synchronized
+    fun table(id: String): CubeLut {
+        val item = items.firstOrNull { it.id == id } ?: error("找不到这款胶卷")
+        return cache[item.sha256]
+            ?: run {
+                val bytes = context.assets.open("luts/${item.file}").use { it.readBytes() }
+                val sha =
+                    java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(
+                        ""
+                    ) {
+                        "%02x".format(it)
+                    }
+                require(sha == item.sha256) { "LUT 文件校验失败" }
+                CubeLut.parse(bytes.inputStream().reader()).also {
+                    require(it.size == item.gridSize)
+                    if (cache.size >= 3) cache.remove(cache.keys.first())
+                    cache[item.sha256] = it
+                }
+            }
+    }
+
     fun selected(): FilmLut {
         val id = context.getSharedPreferences("camera", Context.MODE_PRIVATE).getString("lut", null)
         return items.firstOrNull { it.id == id } ?: items.first()

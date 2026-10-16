@@ -60,6 +60,24 @@ export class Imaging {
   const result=await image.createPixelMap(output,{size:{width:width,height:height},pixelFormat:image.PixelMapFormat.RGBA_8888,editable:true,alphaType:image.AlphaType.OPAQUE});
   result.setColorSpace(colorSpaceManager.create(colorSpaceManager.ColorSpace.SRGB));return result;
  }
+ static async cropRatio(pixel: image.PixelMap,ratio: string): Promise<void> {
+  if(ratio==='legacy')return;
+  const info=await pixel.getImageInfo();const width=info.size.width;const height=info.size.height;
+  const landscape=ratio==='1:1'?1:ratio==='3:2'?1.5:4/3;const desired=width<height?1/landscape:landscape;
+  const w=Math.max(1,Math.min(width,Math.floor(height*desired))),h=Math.max(1,Math.min(height,Math.floor(width/desired)));
+  if(width-w>1||height-h>1)await pixel.crop({x:Math.floor((width-w)/2),y:Math.floor((height-h)/2),size:{width:w,height:h}});
+ }
+ static async develop(path: string,lut: CubeTable,ratio: string): Promise<image.PixelMap> {
+  const pixel=await Imaging.decode(path);let buffer: ArrayBuffer;let width=0,height=0;
+  try {
+   await Imaging.cropRatio(pixel,ratio);const info=await pixel.getImageInfo();width=info.size.width;height=info.size.height;
+   if(width*height*16+64*1024*1024>512*1024*1024)throw new Error('可用内存不足，原片已保留');
+   buffer=new ArrayBuffer(width*height*4);await pixel.readPixelsToBuffer(buffer);
+  } finally {await pixel.release();}
+  const output=await native.develop(buffer,width,height,'',lut.values.buffer,lut.size,lut.minimum.buffer,lut.maximum.buffer);
+  const result=await image.createPixelMap(output,{size:{width:width,height:height},pixelFormat:image.PixelMapFormat.RGBA_8888,editable:true,alphaType:image.AlphaType.OPAQUE});
+  result.setColorSpace(colorSpaceManager.create(colorSpaceManager.ColorSpace.SRGB));return result;
+ }
  static async encode(pixel: image.PixelMap,path: string,format: string='image/png'): Promise<void> {
   const packer=image.createImagePacker();const file=fs.openSync(path,fs.OpenMode.CREATE|fs.OpenMode.READ_WRITE|fs.OpenMode.TRUNC);
   try {await packer.packToFile(pixel,file.fd,{format:format,quality:format==='image/png'?100:95});fs.fsyncSync(file.fd);}finally{fs.closeSync(file);await packer.release();}

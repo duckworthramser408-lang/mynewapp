@@ -1,0 +1,89 @@
+{
+  "description": "Host CPU, Pillow/libjpeg/libpng, generated textured 12MP JPEG, Ricoh GR 33^3 LUT; old excludes lab statistics, hashes and per-photo LUT copy. Not a device measurement.",
+  "width": 4000,
+  "height": 3000,
+  "runs": 3,
+  "lut_cold_parse_ms": 59.84,
+  "pre_encode_pixels_identical": true,
+  "medians": {
+    "old": {
+      "decode_and_buffer_ms": 178.65,
+      "base_pipeline_ms": 399.89,
+      "lut_ms": 270.14,
+      "encode_ms": 2744.13,
+      "total_ms": 3581.79,
+      "bytes": 34794148
+    },
+    "new": {
+      "decode_and_buffer_ms": 171.45,
+      "base_pipeline_ms": 0.02,
+      "lut_ms": 276.73,
+      "encode_ms": 131.45,
+      "total_ms": 572.08,
+      "bytes": 9893878
+    }
+  },
+  "speedup": 6.26,
+  "runs_detail": [
+    {
+      "mode": "old",
+      "trial": 1,
+      "decode_and_buffer_ms": 178.92,
+      "base_pipeline_ms": 437.3,
+      "lut_ms": 295.1,
+      "encode_ms": 2811.83,
+      "total_ms": 3723.15,
+      "bytes": 34794148
+    },
+    {
+      "mode": "old",
+      "trial": 2,
+      "decode_and_buffer_ms": 157.96,
+      "base_pipeline_ms": 375.04,
+      "lut_ms": 270.14,
+      "encode_ms": 2694.66,
+      "total_ms": 3497.8,
+      "bytes": 34794148
+    },
+    {
+      "mode": "old",
+      "trial": 3,
+      "decode_and_buffer_ms": 178.65,
+      "base_pipeline_ms": 399.89,
+      "lut_ms": 259.12,
+      "encode_ms": 2744.13,
+      "total_ms": 3581.79,
+      "bytes": 34794148
+    },
+    {
+      "mode": "new",
+      "trial": 1,
+      "decode_and_buffer_ms": 168.29,
+      "base_pipeline_ms": 0.02,
+      "lut_ms": 278.11,
+      "encode_ms": 125.66,
+      "total_ms": 572.08,
+      "bytes": 9893878
+    },
+    {
+      "mode": "new",
+      "trial": 2,
+      "decode_and_buffer_ms": 173.39,
+      "base_pipeline_ms": 0.02,
+      "lut_ms": 276.73,
+      "encode_ms": 135.64,
+      "total_ms": 585.78,
+      "bytes": 9893878
+    },
+    {
+      "mode": "new",
+      "trial": 3,
+      "decode_and_buffer_ms": 171.45,
+      "base_pipeline_ms": 0.01,
+      "lut_ms": 255.05,
+      "encode_ms": 131.45,
+      "total_ms": 557.96,
+      "bytes": 9893878
+    }
+  ]
+}

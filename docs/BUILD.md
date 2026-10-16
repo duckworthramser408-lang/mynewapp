@@ -4,7 +4,7 @@
 
 - Android Studio，JDK 17，Gradle 8.9，AGP 8.7.3，Kotlin 2.0.21。
 - compile/target API 35；min API 28。Build Tools 35.0.0、NDK 27.0.12077973、CMake 3.22.1。
-- CameraX 1.5.1；arm64-v8a 真机和 x86_64 开发构建。
+- CameraX 1.5.1、WorkManager 2.10.0；arm64-v8a 真机和 x86_64 开发构建。
 
 打开 `android/`，让 Android Studio 设置 SDK 路径；或设置 ANDROID_HOME。release 签名不存入仓库。
 
@@ -17,7 +17,7 @@ adb shell am start -n lab.g23/.MainActivity
 
 云环境使用 README 中的 bootstrap/env/android_build 命令；完整 JDK 是必要条件，基础镜像的精简 JRE 没有 javac/jlink。工具与依赖官方下载校验记录在 `tools/toolchains.json`，代理使用系统 CA。
 
-手机允许相机权限。拍摄后调整任意参数，先保存成片，再标记训练样本。构建通过不能代替这些真机检查。
+手机允许相机权限。验证连续拍摄、相册冲洗占位、滑线对比、原片／胶片保存和删除。构建通过不能代替真机检查。
 
 ## HarmonyOS NEXT
 
@@ -27,7 +27,7 @@ adb shell am start -n lab.g23/.MainActivity
 2. 使用 API 12 / 5.0.0 产品，Stage 模型，启用 Native C++ 工具链。同步 hvigor/ohpm；项目不依赖第三方图像库。
 3. 在 IDE 配置实际产品和调试签名。签名证书及设备授权留在本机，不提交源码。
 4. 运行 entry/default。IDE 提供的 hvigor 命令行环境可执行 `hvigorw --mode module -p module=entry@default -p product=default assembleHap`；仓库不伪造 SDK wrapper 或签名文件，使用 IDE 对应工具。
-5. 逐项完成 `ACCEPTANCE.md` 真机清单，特别确认 photoAvailable/JPEG、PixelMap 的方向和色彩空间、N-API 内存、会话关闭、ZIP 目录层级及系统分享路由。
+5. 逐项完成 `ACCEPTANCE.md` 真机清单，特别确认 photoAvailable/JPEG、PixelMap 方向和色彩空间、TaskPool／N-API、冲洗与相机并行、删除竞态以及 SaveButton 写入系统相册。
 
 参考的是 OpenHarmony 官方 Camera Kit / Image Kit API 文档，API 符号经过文档核对，但不等同于 HarmonyOS SDK 编译。若目标 SDK 版本的接口发生变化，应修正并在该 SDK 编译后更新验收状态。
 
@@ -45,14 +45,10 @@ ctest --test-dir .build/cmake --output-on-failure
 
 测试图片是程序生成的编解码测试夹具，仅用于图像算法和文件协议验证，不作为已完成真实相机拍摄的证据。手机真实拍摄测试需要设备。
 
-## 0.2 界面测试
+## 0.4 验证与性能
 
-`testDebugUnitTest` 包含 Robolectric 4.14.1 / API 35 原生图形测试，Gradle 解析固定的 Android instrumented SDK 后复制到 `android/app/build/robolectric-sdks`。测试离线读取该目录，缓存位于工作区，不重定向用户 HOME。`android/app/build/reports/ui/camera.png` 是空取景框的原生布局测试渲染；测试不会连接真实摄像头。
+`testDebugUnitTest` 使用 Robolectric 4.14.1 / API 35 原生图形，离线读取工作区内的固定 instrumented SDK。输出 `android/app/build/reports/ui/` 中的相机、胶卷选择器、冲洗占位与滑线对比渲染。它们不是手机拍摄证据。
 
-调试包 0.2.0 / versionCode 2 使用与 0.1 相同的当前开发签名。可以尝试 `adb install -r` 升级；签名、包名不一致时系统会拒绝覆盖。不要为了升级而先卸载未导出的照片。
+上传的 LUT 在 `looks/luts/`。Android assets 直接使用该目录；鸿蒙 rawfile 是 `python3 tools/sync_luts.py` 同步的原字节副本。`./tools/test.sh` 检查资源哈希、15 款 LUT 插值和旧数据兼容，并执行 ASan/UBSan。
 
-## 0.3 LUT 资源与验证
-
-上传的 LUT 在 `looks/luts/`。Android assets 直接读取该目录；鸿蒙 rawfile 是由 `python3 tools/sync_luts.py` 同步的原样副本，变更 LUT 后先执行同步，测试会检查两端 SHA-256。
-
-`./tools/test.sh` 额外执行实际 LUT 插值、图片/ZIP 往返、LUT ASan/UBSan 验证；CMake/CTest 包含 core 与 lut 两个目标。Android 原生控件测试输出 `android/app/build/reports/ui/lut-picker.png`。这些测试不测量手机马达或真实相机。
+`python3 -m tools.benchmark_film` 执行主机 12MP 新旧路径基准。解释与范围见 [性能报告](PERFORMANCE.md)；不要把云端时间当成手机时间。

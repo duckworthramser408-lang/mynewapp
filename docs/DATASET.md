@@ -1,3 +1,5 @@
+> 历史实验版本资料。0.4 当前相机只拍照出图，已移除实验编辑、数据记录与导出入口；当前操作见 [使用说明](USAGE.zh.md)。下文保留给旧数据和桌面工具使用。
+
 # 数据协议 1.0
 
 应用内每个 `samples/G23_<uuid>` 保留 original.jpg、parameters.json、metadata.json 和独立 history.json。完整保存后有 edited.png 及两张 thumbnail JPEG；只有 Android 实际完成 RAW+JPEG 同拍时才存在 original.dng。不将 JPEG 改扩展名当 RAW。
