@@ -19,12 +19,27 @@ object NativeBridge {
         size: Int,
         minimum: FloatArray,
         maximum: FloatArray,
+        intensity: Float,
     )
+
+    external fun beautify(
+        bitmap: Bitmap,
+        landmarks: FloatArray,
+        others: FloatArray,
+        presence: Float,
+        flipError: Float,
+        settings: FloatArray,
+    ): FloatArray
+
+    external fun peakRssKiB(): Long
 }
 
 object Imaging {
     fun decode(file: File, maxSide: Int = 0): Bitmap {
-        val source = ImageDecoder.createSource(file)
+        return decodeSource(ImageDecoder.createSource(file), maxSide)
+    }
+
+    internal fun decodeSource(source: ImageDecoder.Source, maxSide: Int = 0): Bitmap {
         return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
                 decoder.isMutableRequired = true

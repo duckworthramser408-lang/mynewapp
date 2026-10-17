@@ -24,6 +24,27 @@ int main() {
     assert(image[8] == 240 && image[9] == 80 && image[10] == 130 && image[11] == 255 &&
            image[15] == 55);
     auto original = image;
+    // Strength mixes encoded sRGB once, with alpha and stride padding unchanged.
+    for (float strength : {0.f, .5f, 1.f}) {
+        image = original;
+        assert(!g23_apply_lut_strength(image.data(), 1, 2, 8, table.data(), table.size(), 2, lo, hi,
+                                       strength, error, sizeof(error)));
+        for (int row : {0, 8}) {
+            const int from[] = {2, 0, 1};
+            for (int c = 0; c < 3; c++)
+                assert(std::abs(int(image[row + c]) -
+                                std::lround(original[row + c] * (1 - strength) +
+                                            original[row + from[c]] * strength)) <= 1);
+            for (int c = 3; c < 8; c++)
+                assert(image[row + c] == original[row + c]);
+        }
+    }
+    image = original;
+    for (float strength : {-1.f, 1.01f, std::numeric_limits<float>::quiet_NaN()}) {
+        assert(g23_apply_lut_strength(image.data(), 1, 2, 8, table.data(), table.size(), 2, lo, hi,
+                                      strength, error, sizeof(error)));
+        assert(image == original);
+    }
     for (size_t count = 0; count < table.size(); ++count) {
         assert(g23_apply_lut(image.data(), 1, 2, 8, table.data(), count, 2, lo, hi, error,
                              sizeof(error)) == 1);

@@ -187,6 +187,8 @@ class DevelopingView(c: Context) : View(c) {
 
 /** Both images share one geometry and transform. Drag the single dividing line. */
 class FullPhotoView(c: Context, private val page: (Int) -> Unit) : View(c) {
+    var leftLabel = "原片"
+    var rightLabel = "胶片"
     var before: Bitmap? = null
     var after: Bitmap? = null
     var split = .5f
@@ -276,21 +278,27 @@ class FullPhotoView(c: Context, private val page: (Int) -> Unit) : View(c) {
         c.drawText("‹ ›", line, height / 2f + context.dp(5), paint)
         paint.textSize = context.dp(11).toFloat()
         fun label(value: String, x: Float) {
+            val half = max(context.dp(23).toFloat(), paint.measureText(value) / 2 + context.dp(10))
+            val centre =
+                x.coerceIn(
+                    half + context.dp(8),
+                    max(half + context.dp(8), width - half - context.dp(8)),
+                )
             paint.color = 0xaa0f1112.toInt()
             c.drawRoundRect(
-                x - context.dp(23),
+                centre - half,
                 context.dp(12).toFloat(),
-                x + context.dp(23),
+                centre + half,
                 context.dp(36).toFloat(),
                 context.dp(8).toFloat(),
                 context.dp(8).toFloat(),
                 paint,
             )
             paint.color = LabUi.foreground
-            c.drawText(value, x, context.dp(28).toFloat(), paint)
+            c.drawText(value, centre, context.dp(28).toFloat(), paint)
         }
-        label("原片", context.dp(32).toFloat())
-        label("胶片", width - context.dp(32).toFloat())
+        label(leftLabel, context.dp(32).toFloat())
+        label(rightLabel, width - context.dp(32).toFloat())
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {

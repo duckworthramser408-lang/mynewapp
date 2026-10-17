@@ -4,14 +4,17 @@
 #include <cstdio>
 #include <limits>
 
-extern "C" int g23_apply_lut(uint8_t *rgba, int width, int height, size_t stride,
-                             const float *table, size_t count, int size, const float lo[3],
-                             const float hi[3], char *error, size_t error_size) {
+extern "C" int g23_apply_lut_strength(uint8_t *rgba, int width, int height, size_t stride,
+                                      const float *table, size_t count, int size, const float lo[3],
+                                      const float hi[3], float intensity, char *error,
+                                      size_t error_size) {
     auto fail = [&](const char *message) {
         if (error && error_size)
             std::snprintf(error, error_size, "%s", message);
         return 1;
     };
+    if (!std::isfinite(intensity) || intensity < 0 || intensity > 1)
+        return fail("滤镜强度无效");
     if (!rgba || !table || !lo || !hi || size < 2 || size > 65 ||
         count != size_t(size) * size * size * 3 || width <= 0 || height <= 0 ||
         int64_t(width) * height > 100000000 || stride < size_t(width) * 4 ||
@@ -23,6 +26,8 @@ extern "C" int g23_apply_lut(uint8_t *rgba, int width, int height, size_t stride
     for (size_t i = 0; i < count; ++i)
         if (!std::isfinite(table[i]) || std::abs(table[i]) > 64.f)
             return fail("LUT 包含无效数值");
+    if (intensity == 0)
+        return 0;
     // Only 256 possible channel values: normalize once for the whole image.
     float coords[3][256];
     for (int c = 0; c < 3; ++c)
@@ -44,9 +49,18 @@ extern "C" int g23_apply_lut(uint8_t *rgba, int width, int height, size_t stride
                     mix(mix(v[c], v[3 + c], fr), mix(v[gs + c], v[gs + 3 + c], fr), fg);
                 const float back = mix(mix(v[bs + c], v[bs + 3 + c], fr),
                                        mix(v[bs + gs + c], v[bs + gs + 3 + c], fr), fg);
-                p[c] = uint8_t(std::lround(std::clamp(mix(front, back, fb), 0.f, 1.f) * 255.f));
+                p[c] = uint8_t(
+                    std::lround(p[c] * (1 - intensity) +
+                                std::clamp(mix(front, back, fb), 0.f, 1.f) * 255.f * intensity));
             }
         }
     }
     return 0;
+}
+
+extern "C" int g23_apply_lut(uint8_t *rgba, int w, int h, size_t stride, const float *table,
+                             size_t count, int size, const float lo[3], const float hi[3],
+                             char *error, size_t errorSize) {
+    return g23_apply_lut_strength(rgba, w, h, stride, table, count, size, lo, hi, 1.f, error,
+                                  errorSize);
 }

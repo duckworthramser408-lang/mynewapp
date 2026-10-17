@@ -13,7 +13,8 @@ class CubeLut(
     val maximum: FloatArray,
     val values: FloatArray,
 ) {
-    fun apply(bitmap: Bitmap) = NativeBridge.applyCube(bitmap, values, size, minimum, maximum)
+    fun apply(bitmap: Bitmap, intensity: Float = 1f) =
+        NativeBridge.applyCube(bitmap, values, size, minimum, maximum, intensity)
 
     companion object {
         fun parse(reader: Reader): CubeLut {

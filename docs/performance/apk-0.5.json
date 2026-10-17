@@ -1,0 +1,61 @@
+{
+  "package": "lab.g23",
+  "version": "0.5.0",
+  "version_code": 5,
+  "bytes": 33538602,
+  "sha256": "2412470457717ebf70bc6d8d0218cf1484eb73880e6198269583fb56e9738a2b",
+  "signer_sha256": "90e3d67e0a78e3d685358f5377b1567d92748b4c9289906ae61e01c8bae3cd5d",
+  "lut_hashes_matched": 15,
+  "model_hashes_matched": 2,
+  "native_libraries": [
+    {
+      "file": "lib/arm64-v8a/libc++_shared.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/arm64-v8a/libg23_android.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/arm64-v8a/libimage_processing_util_jni.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/arm64-v8a/libsurface_util_jni.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/arm64-v8a/libtensorflowlite_jni.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/x86_64/libc++_shared.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/x86_64/libg23_android.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/x86_64/libimage_processing_util_jni.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/x86_64/libsurface_util_jni.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/x86_64/libtensorflowlite_jni.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/arm64-v8a/libg23.so",
+      "load_alignment": 16384
+    },
+    {
+      "file": "lib/x86_64/libg23.so",
+      "load_alignment": 16384
+    }
+  ],
+  "device_validation": "unverified"
+}

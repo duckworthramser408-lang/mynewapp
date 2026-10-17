@@ -1,0 +1,10 @@
+# Separate host verification environment, not Android/Harmony runtime dependencies.
+ai-edge-litert==1.4.0
+numpy==1.26.4
+opencv-contrib-python==4.11.0.86
+mediapipe==0.10.14
+protobuf==4.25.8
+absl-py==2.3.1
+attrs==25.3.0
+flatbuffers==25.2.10
+matplotlib==3.10.1

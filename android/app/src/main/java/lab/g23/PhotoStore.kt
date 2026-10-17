@@ -12,7 +12,13 @@ import java.util.UUID
 import java.util.concurrent.CopyOnWriteArraySet
 import org.json.JSONObject
 
-data class CameraPhoto(val folder: File, val state: String, val ratio: String, val created: Long) {
+data class CameraPhoto(
+    val folder: File,
+    val state: String,
+    val ratio: String,
+    val created: Long,
+    val beautyState: String = "legacy",
+) {
     val id
         get() = folder.name
 
@@ -24,6 +30,9 @@ data class CameraPhoto(val folder: File, val state: String, val ratio: String, v
             File(folder, "film.jpg").takeIf { it.isFile }
                 ?: File(folder, "edited.png").takeIf { it.isFile }
 
+    val lutOnly
+        get() = File(folder, "lut_only.jpg").takeIf { it.isFile } ?: film
+
     val thumbnail
         get() = File(folder, "thumbnail_after.jpg").takeIf { it.isFile } ?: film ?: original
 
@@ -31,7 +40,7 @@ data class CameraPhoto(val folder: File, val state: String, val ratio: String, v
         get() = state == "queued" || state == "developing"
 }
 
-/** Only an immutable capture recipe and job state; no analysis or parameter snapshots. */
+/** Immutable per-capture rendering recipe and job state; no lab analysis records. */
 class PhotoStore internal constructor(private val context: Context) {
     val root = File(context.filesDir, "samples").apply { mkdirs() }
     val looks = LutLibrary(context)
@@ -83,6 +92,7 @@ class PhotoStore internal constructor(private val context: Context) {
                         r.getString("state"),
                         r.getString("ratio"),
                         r.getLong("created"),
+                        r.optString("beauty_state", "legacy"),
                     )
                 } else {
                     // Old installations remain viewable without creating any new lab records.
@@ -115,7 +125,15 @@ class PhotoStore internal constructor(private val context: Context) {
             atomicText(
                 File(dir, "photo.json"),
                 JSONObject()
-                    .put("version", 1)
+                    .put("version", 2)
+                    .put(
+                        "lut_intensity",
+                        context
+                            .getSharedPreferences("camera", Context.MODE_PRIVATE)
+                            .getFloat("lut_intensity", 1f)
+                            .toDouble(),
+                    )
+                    .put("beauty", BeautySettings.read(context).json())
                     .put("lut", look.id)
                     .put("ratio", ratio)
                     .put("created", System.currentTimeMillis())
@@ -200,6 +218,36 @@ class PhotoStore internal constructor(private val context: Context) {
         enqueue(id)
     }
 
+    fun redevelop(id: String) {
+        synchronized(lock) {
+            val dir = folder(id)
+            require(File(dir, "original.jpg").isFile) { "找不到原片" }
+            val recipe =
+                if (File(dir, "photo.json").isFile) record(dir)
+                else
+                    JSONObject()
+                        .put("state", "ready")
+                        .put("ratio", "legacy")
+                        .put("created", dir.lastModified())
+            require(recipe.getString("state") in listOf("ready", "failed")) { "请等待当前冲洗完成" }
+            recipe
+                .put("lut", looks.selected().id)
+                .put(
+                    "lut_intensity",
+                    context
+                        .getSharedPreferences("camera", Context.MODE_PRIVATE)
+                        .getFloat("lut_intensity", 1f)
+                        .toDouble(),
+                )
+                .put("beauty", BeautySettings.read(context).json())
+                .put("version", 2)
+                .put("state", "queued")
+            atomicText(File(dir, "photo.json"), recipe.toString())
+        }
+        changed()
+        enqueue(id)
+    }
+
     /** Rename first: an in-flight decoder/encoder can never resurrect a deleted photo. */
     fun delete(id: String) {
         val trash =
@@ -218,9 +266,7 @@ class PhotoStore internal constructor(private val context: Context) {
     fun develop(
         id: String,
         stopped: () -> Boolean = { false },
-        render: (File, String, String) -> Unit = { dir, lut, ratio ->
-            FilmProcessor.process(dir, looks.table(lut), ratio)
-        },
+        render: ((File, String, String) -> Unit)? = null,
     ) {
         val dir = folder(id)
         val recipe =
@@ -234,13 +280,27 @@ class PhotoStore internal constructor(private val context: Context) {
         changed()
         try {
             if (stopped()) return
-            render(dir, recipe.getString("lut"), recipe.getString("ratio"))
+            if (render != null) render(dir, recipe.getString("lut"), recipe.getString("ratio"))
+            else {
+                val beauty =
+                    FilmProcessor.process(
+                        context,
+                        dir,
+                        looks.table(recipe.getString("lut")),
+                        recipe.getString("ratio"),
+                        recipe,
+                    )
+                recipe.put("beauty_state", beauty.state)
+            }
             synchronized(lock) {
                 if (!dir.exists() || stopped()) return
                 check(File(dir, "film.jpg.tmp").renameTo(File(dir, "film.jpg")))
                 check(
                     File(dir, "thumbnail_after.jpg.tmp").renameTo(File(dir, "thumbnail_after.jpg"))
                 )
+                val baseline = File(dir, "lut_only.jpg.tmp")
+                if (baseline.isFile) check(baseline.renameTo(File(dir, "lut_only.jpg")))
+                else File(dir, "lut_only.jpg").delete()
                 atomicText(File(dir, "photo.json"), recipe.put("state", "ready").toString())
             }
         } catch (e: Throwable) {
@@ -295,7 +355,29 @@ object FilmProcessor {
         }
     }
 
-    fun process(dir: File, lut: CubeLut, ratio: String) {
+    private fun prepared(dir: File, ratio: String): Bitmap {
+        val decoded = Imaging.decode(File(dir, "original.jpg"))
+        try {
+            val cropped =
+                if (ratio == "legacy" && File(dir, "parameters.json").isFile)
+                    Imaging.geometry(decoded, JSONObject(File(dir, "parameters.json").readText()))
+                else crop(decoded, ratio)
+            if (cropped !== decoded) decoded.recycle()
+            return if (cropped.isMutable) cropped
+            else cropped.copy(Bitmap.Config.ARGB_8888, true).also { cropped.recycle() }
+        } catch (e: Throwable) {
+            if (!decoded.isRecycled) decoded.recycle()
+            throw e
+        }
+    }
+
+    fun process(
+        context: Context,
+        dir: File,
+        lut: CubeLut,
+        ratio: String,
+        recipe: JSONObject,
+    ): NaturalBeauty.Result {
         val start = System.nanoTime()
         val (w, h) = Imaging.dimensions(File(dir, "original.jpg"))
         val runtime = Runtime.getRuntime()
@@ -303,48 +385,80 @@ object FilmProcessor {
         require(w > 0 && h > 0 && w.toLong() * h * 8 + 32L * 1024 * 1024 < available) {
             "可用内存不足，原片已保留，可稍后重新冲洗"
         }
-        val source = Imaging.decode(File(dir, "original.jpg"))
-        var output: Bitmap? = null
+        val requested =
+            runCatching { BeautySettings.snapshot(recipe.optJSONObject("beauty")) }
+                .getOrElse { BeautySettings(enabled = false) }
+        val memoryFallback =
+            requested.enabled && w.toLong() * h * 12 + 64L * 1024 * 1024 >= available
+        val settings = if (memoryFallback) requested.copy(enabled = false) else requested
+        val intensity = recipe.optDouble("lut_intensity", 1.0).toFloat()
+        require(intensity.isFinite() && intensity in 0f..1f)
+        File(dir, "lut_only.jpg.tmp").delete()
+        var image: Bitmap = prepared(dir, ratio)
+        val decoded = System.nanoTime()
         try {
-            val cropped = crop(source, ratio)
-            output =
-                if (cropped.isMutable) cropped
-                else
-                    cropped.copy(Bitmap.Config.ARGB_8888, true).also {
-                        if (cropped !== source) cropped.recycle()
-                    }
-            val decoded = System.nanoTime()
-            lut.apply(output)
-            val rendered = System.nanoTime()
-            File(dir, "film.jpg.tmp").outputStream().use {
-                check(output.compress(Bitmap.CompressFormat.JPEG, 95, it))
-                it.fd.sync()
+            var beauty =
+                if (memoryFallback) NaturalBeauty.Result("memory_fallback")
+                else NaturalBeauty.apply(context, image, settings)
+            if (beauty.state == "error_fallback") {
+                image.recycle()
+                image = prepared(dir, ratio)
             }
-            // Orientation is normalized by ImageDecoder. Preserve useful camera EXIF only.
-            val before = ExifInterface(File(dir, "original.jpg"))
-            val after = ExifInterface(File(dir, "film.jpg.tmp"))
-            listOf(
-                    ExifInterface.TAG_DATETIME_ORIGINAL,
-                    ExifInterface.TAG_MAKE,
-                    ExifInterface.TAG_MODEL,
-                    ExifInterface.TAG_EXPOSURE_TIME,
-                    ExifInterface.TAG_F_NUMBER,
-                    ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY,
-                    ExifInterface.TAG_FOCAL_LENGTH,
-                )
-                .forEach { key -> before.getAttribute(key)?.let { after.setAttribute(key, it) } }
-            after.setAttribute(ExifInterface.TAG_ORIENTATION, "1")
-            after.setAttribute(ExifInterface.TAG_COLOR_SPACE, "1")
-            after.saveAttributes()
-            Imaging.thumbnail(output, File(dir, "thumbnail_after.jpg.tmp"))
-            val end = System.nanoTime()
+            val beautified = System.nanoTime()
+            lut.apply(image, intensity)
+            val filtered = System.nanoTime()
+            encode(image, File(dir, "film.jpg.tmp"))
+            runCatching { copyExif(File(dir, "original.jpg"), File(dir, "film.jpg.tmp")) }
+                .onFailure { Log.w("FilmDevelop", "EXIF 未复制；照片方向已归一化", it) }
+            Imaging.thumbnail(image, File(dir, "thumbnail_after.jpg.tmp"))
+            val encoded = System.nanoTime()
+            // Full-resolution baseline uses a SECOND decode of the same untouched original,
+            // same crop/LUT/strength/JPEG quality. Never undo or reapply to a beautified image.
+            if (beauty.state == "applied") {
+                try {
+                    image.recycle()
+                    image = prepared(dir, ratio)
+                    lut.apply(image, intensity)
+                    encode(image, File(dir, "lut_only.jpg.tmp"))
+                } catch (e: Throwable) {
+                    if (e !is Exception && e !is OutOfMemoryError) throw e
+                    File(dir, "lut_only.jpg.tmp").delete()
+                    beauty = beauty.copy(state = "applied_comparison_unavailable")
+                    Log.w("FilmDevelop", "对比图未生成，美颜成片已保留", e)
+                }
+            }
             Log.d(
                 "FilmDevelop",
-                "decode=${(decoded-start)/1000000}ms lut=${(rendered-decoded)/1000000}ms jpeg+thumbnail=${(end-rendered)/1000000}ms",
+                "decode=${(decoded-start)/1000000}ms detect=${beauty.detectMs}ms beauty=${(beautified-decoded)/1000000-beauty.detectMs}ms lut=${(filtered-beautified)/1000000}ms encode=${(encoded-filtered)/1000000}ms baseline=${(System.nanoTime()-encoded)/1000000}ms rssHighWater=${NativeBridge.peakRssKiB()}KiB heapUsed=${(runtime.totalMemory()-runtime.freeMemory())/1024}KiB",
             )
+            return beauty
         } finally {
-            if (output !== source) output?.recycle()
-            source.recycle()
+            if (!image.isRecycled) image.recycle()
         }
+    }
+
+    private fun encode(image: Bitmap, file: File) {
+        file.outputStream().use {
+            check(image.compress(Bitmap.CompressFormat.JPEG, 95, it))
+            it.fd.sync()
+        }
+    }
+
+    private fun copyExif(source: File, target: File) {
+        val before = ExifInterface(source)
+        val after = ExifInterface(target)
+        listOf(
+                ExifInterface.TAG_DATETIME_ORIGINAL,
+                ExifInterface.TAG_MAKE,
+                ExifInterface.TAG_MODEL,
+                ExifInterface.TAG_EXPOSURE_TIME,
+                ExifInterface.TAG_F_NUMBER,
+                ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY,
+                ExifInterface.TAG_FOCAL_LENGTH,
+            )
+            .forEach { key -> before.getAttribute(key)?.let { after.setAttribute(key, it) } }
+        after.setAttribute(ExifInterface.TAG_ORIENTATION, "1")
+        after.setAttribute(ExifInterface.TAG_COLOR_SPACE, "1")
+        after.saveAttributes()
     }
 }

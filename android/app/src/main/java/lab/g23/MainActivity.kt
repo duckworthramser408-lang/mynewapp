@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
     private var albumPhotos = emptyList<CameraPhoto>()
     private var currentPhoto: CameraPhoto? = null
     private var photoKey = ""
+    private var beautyComparison = false
     private var cameraLayout: CameraLayout? = null
     private var thumbnail: Bitmap? = null
     private var thumbnailKey = ""
@@ -362,11 +363,58 @@ class MainActivity : ComponentActivity() {
             preferences.edit().putBoolean("exposure", it).apply()
             cameraLayout?.exposurePanel?.visibility = if (it) View.VISIBLE else View.GONE
         }
+        var beauty = BeautySettings.read(this)
+        toggle("自然美颜", beauty.enabled) {
+            beauty = beauty.copy(enabled = it)
+            beauty.save(this)
+        }
+        fun strength(label: String, value: Float, update: (Float) -> Unit) {
+            val title = text("$label ${(value*100).toInt()}%", 13f)
+            body.addView(title)
+            body.addView(
+                SeekBar(this).apply {
+                    max = 100
+                    progress = (value * 100).toInt()
+                    setOnSeekBarChangeListener(
+                        object : SeekBar.OnSeekBarChangeListener {
+                            override fun onStartTrackingTouch(s: SeekBar) {}
+
+                            override fun onStopTrackingTouch(s: SeekBar) {}
+
+                            override fun onProgressChanged(s: SeekBar, v: Int, user: Boolean) {
+                                if (user) {
+                                    title.text = "$label $v%"
+                                    update(v / 100f)
+                                }
+                            }
+                        }
+                    )
+                }
+            )
+        }
+        strength("对称修正", beauty.symmetry) {
+            beauty = beauty.copy(symmetry = it)
+            beauty.save(this)
+        }
+        strength("淡法令纹", beauty.folds) {
+            beauty = beauty.copy(folds = it)
+            beauty.save(this)
+        }
+        strength("轻微小脸（非小头）", beauty.smallFace) {
+            beauty = beauty.copy(smallFace = it)
+            beauty.save(this)
+        }
+        strength("滤镜强度", preferences.getFloat("lut_intensity", 1f)) {
+            preferences.edit().putFloat("lut_intensity", it).apply()
+        }
+        body.addView(text("美颜在拍摄后生效，全部在本机处理。数值表示效果控制强度，不代表脸部移动或缩小比例。", 12f))
+        body.addView(text("首版只处理可靠主脸；大侧脸、遮挡或表情不可靠时自动减弱或跳过。本版只支持轻微小脸，尚未实现包含头发的完整小头。", 12f))
+        body.addView(text("设置用于之后拍摄的照片；预览页可从原片按当前设置重新出图。", 12f))
         body.addView(text("照片默认保存在应用相册。打开照片，点保存可选择原片或胶片，另存到系统相册。", 12f))
         body.addView(text("版本 ${BuildConfig.VERSION_NAME}", 12f))
         AlertDialog.Builder(this)
             .setTitle("相机设置")
-            .setView(body)
+            .setView(ScrollView(this).apply { addView(body) })
             .setPositiveButton("完成", null)
             .show()
     }
@@ -549,6 +597,35 @@ class MainActivity : ComponentActivity() {
                 minHeight = 36.dp()
             }
         )
+        val modes =
+            LabUi.weightedRow(
+                this,
+                LabUi.button(this, "原片／成片") {
+                    beautyComparison = false
+                    photoKey = ""
+                    refreshPhoto()
+                },
+                LabUi.button(this, "仅 LUT／美颜") {
+                    beautyComparison = true
+                    photoKey = ""
+                    refreshPhoto()
+                },
+            )
+        root.addView(modes)
+        root.addView(
+            LabUi.button(this, "按当前设置重新出图") {
+                val id = currentPhoto?.id ?: return@button
+                AlertDialog.Builder(this)
+                    .setMessage("使用当前胶卷、美颜及滤镜强度，从原片重新生成这张照片？")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("重新出图") { _, _ ->
+                        io.execute {
+                            runCatching { store.redevelop(id) }.onFailure { showError(it) }
+                        }
+                    }
+                    .show()
+            }
+        )
         root.addView(LabUi.button(this, "保存图片", true) { currentPhoto?.let { chooseSave(it) } })
         refreshPhoto()
     }
@@ -561,14 +638,22 @@ class MainActivity : ComponentActivity() {
         val view = fullPhoto ?: return
         io.execute {
             val photo = store.photo(id) ?: return@execute
-            val key = "${photo.id}:${photo.state}:${photo.film?.lastModified()}"
+            val compareBeauty =
+                beautyComparison && photo.beautyState != "applied_comparison_unavailable"
+            val key = "${photo.id}:${photo.state}:${photo.film?.lastModified()}:$compareBeauty"
             if (key == photoKey) return@execute
             var original: Bitmap? = null
             var film: Bitmap? = null
             try {
-                val source = Imaging.decode(photo.original, 1600)
+                val source =
+                    Imaging.decode(
+                        if (compareBeauty && photo.film != null) photo.lutOnly!!
+                        else photo.original,
+                        1600,
+                    )
                 original =
-                    if (photo.ratio == "legacy" && photo.film != null) {
+                    if (compareBeauty && photo.film != null) source
+                    else if (photo.ratio == "legacy" && photo.film != null) {
                         val params = File(photo.folder, "parameters.json")
                         if (params.isFile)
                             Imaging.geometry(source, org.json.JSONObject(params.readText()))
@@ -587,6 +672,8 @@ class MainActivity : ComponentActivity() {
                     ) {
                         currentPhoto = photo
                         photoKey = key
+                        view.leftLabel = if (compareBeauty) "仅 LUT" else "原片"
+                        view.rightLabel = if (compareBeauty) "美颜＋LUT" else "胶片"
                         view.replace(before, after)
                         if (photo.developing) (root.getChildAt(2) as TextView).text = "冲洗中 · 可先保存原片"
                         else if (photo.state == "failed") {
@@ -597,7 +684,9 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         } else {
-                            (root.getChildAt(2) as TextView).text = "拖动竖线 · 原片与胶片"
+                            (root.getChildAt(2) as TextView).text =
+                                if (compareBeauty) NaturalBeauty.message(photo.beautyState)
+                                else "拖动竖线 · 原片与胶片"
                             root.getChildAt(2).setOnClickListener(null)
                         }
                     } else {

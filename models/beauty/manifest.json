@@ -1,0 +1,19 @@
+{
+  "source": "https://dl.google.com/dl/android/maven2/com/google/mediapipe/facemesh/0.10.14/facemesh-0.10.14.aar",
+  "distribution_version": "0.10.14",
+  "distribution_license": "Apache-2.0 (Google Maven POM)",
+  "aar_sha256": "4c746c0243e8db5d79701aea1c7166ccf5a92d5a46d1da79c4d9c274f2e20126",
+  "models": {
+    "face_detection_short_range.tflite": {
+      "sha256": "bbff11cebd1eb27a1e004cae0b0e63ec8c551cbf34a4451148b4908b8db3eca8",
+      "bytes": 229714
+    },
+    "face_landmark.tflite": {
+      "sha256": "1055cb9d4a9ca8b8c688902a3a5194311138ba256bcc94e336d8373a5f30c814",
+      "bytes": 1242398
+    }
+  },
+  "canonical_sha256": "8bac80443397e113f41a8b565ea72c59390bc031d9defab289dba7bc0c54e618",
+  "landmarks": 468,
+  "head_segmentation": false
+}

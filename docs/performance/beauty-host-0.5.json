@@ -1,0 +1,266 @@
+{
+  "version": "0.5",
+  "device_validation": "unverified",
+  "platform": "Linux host, ai-edge-litert 1.4.0, CPU XNNPACK, C++ -O2",
+  "cases": [
+    {
+      "applied": 7,
+      "reason": 0,
+      "yaw_degrees": -0.46016600728034973,
+      "pitch_degrees": 3.18037486076355,
+      "pose_error": 0.03571782261133194,
+      "max_displacement_px": 0.08104248344898224,
+      "fold_confidence": 0.3847249746322632,
+      "geometry_ms": 5.787642,
+      "folds_ms": 6.427058,
+      "scratch_bytes": 658800,
+      "changed_pixels": 4350,
+      "name": "front_real",
+      "width": 512,
+      "height": 600,
+      "detect_ms": 6.14,
+      "effect_ms": 14.81,
+      "lut_ms": 9.21,
+      "encode_ms": 1.08,
+      "process_rss_highwater_kib": 162500,
+      "detections": 1,
+      "rejections": [
+        {
+          "score": 0.9353622198104858,
+          "presence": 0.9999999970861913,
+          "flip_presence": 0.9999999996407893,
+          "flip_error": 0.006212661508470774
+        }
+      ]
+    },
+    {
+      "applied": 2,
+      "reason": 0,
+      "yaw_degrees": -2.204979181289673,
+      "pitch_degrees": -0.5046159625053406,
+      "pose_error": 0.026679489761590958,
+      "max_displacement_px": 0.0,
+      "fold_confidence": 0.5956369638442993,
+      "geometry_ms": 1.702354,
+      "folds_ms": 8.08709,
+      "scratch_bytes": 823680,
+      "changed_pixels": 37,
+      "name": "smile_real",
+      "width": 820,
+      "height": 1024,
+      "detect_ms": 5.62,
+      "effect_ms": 19.54,
+      "lut_ms": 25.87,
+      "encode_ms": 2.63,
+      "process_rss_highwater_kib": 171876,
+      "detections": 1,
+      "rejections": [
+        {
+          "score": 0.9259721636772156,
+          "presence": 0.9999999999996334,
+          "flip_presence": 0.9999999999999722,
+          "flip_error": 0.004370325710624456
+        }
+      ]
+    },
+    {
+      "applied": 0,
+      "reason": 2,
+      "yaw_degrees": -24.462636947631836,
+      "pitch_degrees": 17.322444915771484,
+      "pose_error": 0.03914034366607666,
+      "max_displacement_px": 0.0024446232710033655,
+      "fold_confidence": 0.750449538230896,
+      "geometry_ms": 3.80825,
+      "folds_ms": 4.612445,
+      "scratch_bytes": 451440,
+      "changed_pixels": 0,
+      "name": "side_real",
+      "width": 512,
+      "height": 512,
+      "detect_ms": 6.2,
+      "effect_ms": 10.38,
+      "lut_ms": 7.73,
+      "encode_ms": 0.9,
+      "process_rss_highwater_kib": 172036,
+      "detections": 1,
+      "rejections": [
+        {
+          "score": 0.865959882736206,
+          "presence": 0.9999999999845242,
+          "flip_presence": 0.9999999925313466,
+          "flip_error": 0.007924157194793224
+        }
+      ]
+    },
+    {
+      "applied": 7,
+      "reason": 0,
+      "yaw_degrees": -1.7270536422729492,
+      "pitch_degrees": 4.983226299285889,
+      "pose_error": 0.04001859948039055,
+      "max_displacement_px": 0.07649624347686768,
+      "fold_confidence": 0.38195255398750305,
+      "geometry_ms": 5.751327,
+      "folds_ms": 6.906424,
+      "scratch_bytes": 674352,
+      "changed_pixels": 4277,
+      "name": "glasses_synthetic",
+      "width": 512,
+      "height": 600,
+      "detect_ms": 5.31,
+      "effect_ms": 14.95,
+      "lut_ms": 9.91,
+      "encode_ms": 1.11,
+      "process_rss_highwater_kib": 172052,
+      "detections": 1,
+      "rejections": [
+        {
+          "score": 0.9218248724937439,
+          "presence": 0.9999999994313402,
+          "flip_presence": 0.9999999933109116,
+          "flip_error": 0.00512743229046464
+        }
+      ]
+    },
+    {
+      "applied": 7,
+      "reason": 0,
+      "yaw_degrees": -0.034990403801202774,
+      "pitch_degrees": 2.671761989593506,
+      "pose_error": 0.02992560714483261,
+      "max_displacement_px": 0.04656572639942169,
+      "fold_confidence": 0.3916195333003998,
+      "geometry_ms": 5.020092,
+      "folds_ms": 5.896557,
+      "scratch_bytes": 626304,
+      "changed_pixels": 1933,
+      "name": "occluded_forehead_synthetic",
+      "width": 512,
+      "height": 600,
+      "detect_ms": 4.89,
+      "effect_ms": 13.16,
+      "lut_ms": 9.77,
+      "encode_ms": 1.09,
+      "process_rss_highwater_kib": 172052,
+      "detections": 1,
+      "rejections": [
+        {
+          "score": 0.7835156321525574,
+          "presence": 0.9999999849697754,
+          "flip_presence": 0.9999990139787874,
+          "flip_error": 0.007431304082274437
+        }
+      ]
+    },
+    {
+      "applied": 0,
+      "reason": 4,
+      "yaw_degrees": -0.9943302273750305,
+      "pitch_degrees": 5.052519798278809,
+      "pose_error": 0.038491807878017426,
+      "max_displacement_px": 0.0,
+      "fold_confidence": 0.0,
+      "geometry_ms": 0.0,
+      "folds_ms": 0.0,
+      "scratch_bytes": 0,
+      "changed_pixels": 0,
+      "name": "weaklight_synthetic",
+      "width": 512,
+      "height": 600,
+      "detect_ms": 5.31,
+      "effect_ms": 2.45,
+      "lut_ms": 9.48,
+      "encode_ms": 0.86,
+      "process_rss_highwater_kib": 172084,
+      "detections": 1,
+      "rejections": [
+        {
+          "score": 0.9411949515342712,
+          "presence": 0.999999271405512,
+          "flip_presence": 0.9999991657244344,
+          "flip_error": 0.005086274351924658
+        }
+      ]
+    },
+    {
+      "applied": 2,
+      "reason": 0,
+      "yaw_degrees": -1.2976067066192627,
+      "pitch_degrees": -1.5311397314071655,
+      "pose_error": 0.030376011505723,
+      "max_displacement_px": 0.0,
+      "fold_confidence": 0.5989954471588135,
+      "geometry_ms": 1.946574,
+      "folds_ms": 10.149959,
+      "scratch_bytes": 943920,
+      "changed_pixels": 44,
+      "name": "multi_synthetic",
+      "width": 800,
+      "height": 500,
+      "detect_ms": 5.34,
+      "effect_ms": 14.98,
+      "lut_ms": 12.4,
+      "encode_ms": 1.12,
+      "process_rss_highwater_kib": 172980,
+      "detections": 2,
+      "rejections": [
+        {
+          "score": 0.955026388168335,
+          "presence": 0.9999999999997078,
+          "flip_presence": 0.99999999999922,
+          "flip_error": 0.0035117119550704956
+        }
+      ]
+    },
+    {
+      "applied": 0,
+      "reason": "no_reliable_face",
+      "name": "no_face_synthetic",
+      "width": 800,
+      "height": 600,
+      "detect_ms": 1.33,
+      "effect_ms": 0.17,
+      "lut_ms": 14.98,
+      "encode_ms": 1.0,
+      "process_rss_highwater_kib": 172980,
+      "detections": 0,
+      "rejections": []
+    },
+    {
+      "applied": 7,
+      "reason": 0,
+      "yaw_degrees": -1.110464334487915,
+      "pitch_degrees": 3.8583667278289795,
+      "pose_error": 0.03754913806915283,
+      "max_displacement_px": 0.515631377696991,
+      "fold_confidence": 0.4169887900352478,
+      "geometry_ms": 225.069931,
+      "folds_ms": 134.37265,
+      "scratch_bytes": 12971412,
+      "changed_pixels": 171829,
+      "name": "12mp_enlarged_stress",
+      "width": 3200,
+      "height": 3750,
+      "detect_ms": 5.55,
+      "effect_ms": 459.91,
+      "lut_ms": 456.75,
+      "encode_ms": 35.05,
+      "process_rss_highwater_kib": 290296,
+      "detections": 1,
+      "rejections": [
+        {
+          "score": 0.9400358200073242,
+          "presence": 0.9999999935687491,
+          "flip_presence": 0.999999999672829,
+          "flip_error": 0.005324544385075569
+        }
+      ]
+    }
+  ],
+  "landmark_reference_rms_normalized": 0.0004015644286336856,
+  "plain_cpu_rms_normalized": 5.964989668427734e-06,
+  "repeat_from_original_deterministic": true,
+  "fold_only_changed_pixels": 347,
+  "full_head_implemented": false
+}

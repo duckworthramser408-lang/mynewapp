@@ -1,45 +1,53 @@
-# 0.4.0 验收状态
+# 0.5.0 实际验证状态
 
-本轮产品方向为简单胶卷相机。已实现照片删除、滑线预览、原片／胶片保存和不阻塞取景的后台冲洗，移除设置中的实验编辑与整组导出；新照片不再生成实验参数、统计和历史。Android 编译、自动化检查、签名和 APK 对齐通过。鸿蒙提交了对应原生源码与系统相册分析，尚未编译 HAP。
+Android 自然美颜已经接入原片解码与现有 LUT 之间，包含默认开启的三个独立控制、离线真实模型、同 LUT 滑线对比与原片重新出图。**完整小头未实现，提供的是轻微小脸；原生鸿蒙美颜尚未接入，未构建 HAP。没有手机／模拟器连接，不声明真机效果、相机兼容性或首次离线安装已验收。**
 
-## 实际执行
-
-| 检查 | 结果 | 覆盖范围 |
+| 检查 | 结果 | 实际范围 |
 |---|---|---|
-| Android assembleDebug | 通过 | Kotlin、CameraX、WorkManager、双 ABI JNI 与资源打包 |
-| Android testDebugUnitTest | 38 passed，0 failed/error/skip | 原有兼容检查；新增 18 项覆盖胶卷／画幅快照、无实验文件、冲洗完成提交、处理中再次拍摄登记、删除竞态、失败和内存不足后继续队列、重试、中断恢复、旧照片删除、LUT 缓存、滑线像素、胶卷占位、画幅，以及系统图库写入／失败清理 |
-| Android lintDebug | 0 error/fatal，24 warnings | 包括既有与视图绘制分配、国际化、工具构造器及备份声明警告；没有关闭检查 |
-| Python unittest | 37 passed，0 failed/error/skip | 全部 15 款上传 LUT 的独立参考比较、真实 JPEG/PNG 编解码、资源哈希、原片不变及旧协议／数据工具兼容 |
-| C++ ASan / UBSan | 通过 | LUT 输入、alpha／stride、基础中性跨瓦片及 10,000 个畸形输入，无报告内存错误 |
-| CMake / CTest | 2 passed，0 failed | core 和 lut 独立 C ABI 检查 |
-| apksigner | 通过 | v2 开发调试签名，证书 SHA-256 延续上一版 |
-| zipalign | 通过 | `-c -P 16 4` |
-| APK 内资源 | 通过 | 15 个用户原始 LUT 的 SHA-256 全部匹配 catalog，包含 arm64-v8a 与 x86_64 |
-| 12 MP 主机新旧路径测速 | 通过 | 三次中位数 3.58 秒 → 0.57 秒，约 6.26 倍；编码前完整像素一致。不是手机实测，详见[性能报告](PERFORMANCE.md) |
-| HarmonyOS SDK / ArkTS / HAP | 未执行 | 当前无 DevEco、鸿蒙 SDK、hvigor/ohpm 或签名环境 |
-| Android / HarmonyOS 真机 | 未执行 | 当前无相机手机或可连接的设备；未声明真机拍摄、振动手感、图库或端到端耗时已经验收 |
-| 远程 GitHub Actions | 未核验 | 本机已运行相应检查；远程 CI 结果不由本报告代替 |
+| Android assembleDebug | 通过 | Kotlin、LiteRT 1.4.1、WorkManager、arm64-v8a / x86_64 JNI 与模型资源 |
+| Android testDebugUnitTest | **46 passed，0 failed/error/skip** | 38 项原相机／LUT／保存兼容检查，加 8 项美颜配方、默认／独立持久化、快门快照、原片重出图、基线提交清理、模型 SHA 与无网络权限、真实初始化失败不改像素、8 种 EXIF 变换 |
+| Android lintDebug | **0 error/fatal，25 warnings** | 视图绘制分配、既有备份／国际化／工具构造器等；未禁用检查 |
+| Python unittest | **37 passed** | 全部 15 个原始 LUT 独立参考插值、资源哈希、编解码与旧协议兼容 |
+| C++ ASan / UBSan | 通过，无报告 | 基础核心／LUT 与美颜，几何实际修改、位移上限、姿态与 image roll、alpha／stride、其他人脸重叠、非法输入保持不变；LUT 0 / 0.5 / 1 强度 |
+| CMake / CTest | **3 passed** | core、lut、beauty |
+| 真模型 + C++ 主机验证 | **9 类输入完成** | 三张真实照片与明确标记的合成眼镜、额头遮挡、弱光、双人、无人脸、12MP 放大压力样本；不等于真实刘海／实拍弱光或相机高分辨率验收 |
+| 坐标参考对照 | 通过 | 与同权重 MediaPipe Python 官方图比较，归一化 xy RMS 0.0004016 |
+| 无 delegate CPU 降级 | 主机通过 | 对 XNNPACK 点位 RMS 0.0000060；Android JNI 设备降级仍未验证 |
+| 其他人脸保护／无人脸 | 主机通过 | 双人场景确实检测到 2 脸；另一检测框内像素保持不变；无人脸整图不变 |
+| 法令纹与纹理保护 | 主机通过有限样本 | 真实笑脸淡纹单项最大参数改变 347 像素，局部且增亮幅度受限；默认更轻，不能表述为广泛样片质量验收 |
+| apksigner / zipalign | 通过 | v2 调试签名，与旧版相同证书；`-c -P 16 4` |
+| 模型 / LUT / ELF | 通过 | APK 内 15 LUT + 2 模型 SHA 匹配，双 ABI 每个 ELF PT_LOAD 均 ≥16KB；不是设备启动验证 |
+| Android CameraX / LiteRT JNI 真机 | **未验证** | 无手机、模拟器、相机硬件或 /dev/kvm；Robolectric 不能运行 Android LiteRT JNI，另用真实主机模型测试，不伪造 JNI 推理结果 |
+| HarmonyOS 7.0 / API 26 | **美颜未接入、HAP 未编译、设备未验证** | 只收到版本描述，没有 DevEco / SDK / hvigor / ohpm / HDC / 原生推理库 |
+| GitHub Actions 远程结果 | 未核验 | 本地检查已运行，不用本报告代替远程 CI 状态 |
 
-## 安装包
+## APK
 
-包名 `lab.g23`，版本 `0.4.0` / versionCode `4`，应用名称“G23 相机”。文件：`downloads/G23-Lab-debug.apk`，21,454,059 bytes。
+包名 `lab.g23`，版本 `0.5.0` / code `5`。仓库 `downloads/G23-Lab-debug.apk`，**33,538,602 bytes**。
 
-SHA-256：`74c123dd5e7b8c07ae8dace5d2dc0aa6180423384e7550695d9f03e384c4127f`。
+SHA-256：`2412470457717ebf70bc6d8d0218cf1484eb73880e6198269583fb56e9738a2b`。
 
-开发签名证书 SHA-256：`90e3d67e0a78e3d685358f5377b1567d92748b4c9289906ae61e01c8bae3cd5d`。这不是商店发布签名。可以覆盖相同签名旧包，避免卸载时清除应用内照片。
+调试证书 SHA-256：`90e3d67e0a78e3d685358f5377b1567d92748b4c9289906ae61e01c8bae3cd5d`。可覆盖同签名旧版；卸载会清除应用私有照片。签名不是应用商店发布签名。
 
-## 自动化证据的边界
+机器可读记录：[APK 验证](performance/apk-0.5.json)、[主机美颜与 LUT 分段记录](performance/beauty-host-0.5.json)。[0.4 验证记录](ACCEPTANCE-0.4.md) 留存供回溯。
 
-并发与删除测试使用真实文件和受控渲染任务来确定交错顺序；图库测试使用 ContentProvider 检查真实字节复制、pending 发布和失败清理。它们验证状态与数据完整性，不能替代 CameraX 相机硬件或系统图库实际显示。C++ LUT 算法另外由主机原始像素测试覆盖。
+## 效果与性能证据的范围
 
-[相机布局](images/camera-0.4.png)、[胶卷轮盘](images/lut-picker-0.4.png)、[冲洗占位](images/album-developing-0.4.png)、[滑线对比](images/photo-comparison-0.4.png) 均为 Robolectric 原生控件测试渲染。红／蓝对比图是测试夹具，空取景框没有伪造真实拍摄画面。
+9 个输入实际运行本地模型；正脸包括真实眼镜照片，额外镜框、额头遮挡、弱光和双人由真实照片派生，已在用例名称标注 synthetic。12MP 是原图放大至 3200×3750 的内存／边界压力，**不是原生高分辨率拍摄细节验证**。未重新分发测试人像。
 
-日志位于 `/workspace/toolchains/android-build-v04-final.log`、`core-v04.log`、`cmake-v04.log`，签名记录 `.build/apk-signature-v04.log`；JUnit 与 Lint 报告在 `android/app/build/`。主机基准原始记录在 [film-host-0.4.json](performance/film-host-0.4.json)。
+该次云端 12MP 记录：检测 5.55ms，共享美颜调用 459.91ms（含主机数据复制；其中几何 225.07ms、淡纹 134.37ms），LUT 456.75ms，JPEG 编码 35.05ms。这是一次主机运行、复用已加载模型，不是手机端到端性能；不包括 CameraX、原片解码、UI、持久队列等待与对比基线。
 
-## 真机剩余验收
+进程 RSS high-water 290,296KiB，包含主机 Python／OpenCV、输入数组、复制和先前用例；C++ ROI / 增益 scratch 12,971,412 bytes。不能当成 Android 每张照片的峰值内存。Android 代码已记录分段时间、scratch、heap 与进程 high-water，需设备采集。
 
-- 连续拍摄时快门能在 JPEG 落盘后恢复；后续冲洗不重新绑定相机、不弹“正在应用 LUT”。确认不同照片仍采用各自按快门时的 LUT 和画幅。
-- 多张冲洗占位自动更新；缩放和滑线原片／胶片构图对齐。处理失败或存储不足时原片保留，重试可继续。
-- 冲洗中、冲洗后分别删除，不出现照片复活。分别保存原片和胶片，确认系统相册实际内容、方向和色彩；Android 9 检查文档选择器。
-- 关闭／重建 Activity、系统回收进程后恢复队列。后台调度可能延迟，强行停止应用后不承诺即时完成。
-- 鸿蒙先在 API 12 目标 SDK 编译，再验证 TaskPool、N-API 生命周期、PixelMap、SaveButton 和系统相册。应用级队列在下次启动恢复，不声明已具备长期后台驻留。
+肉眼检查了真实人像及放大差分图：默认极轻；法令纹仅在两侧窄带改变，未出现全脸漂白。自动断言检查鼻尖、嘴部中心固定及另一人脸像素不变。眼镜边缘、头发、鼻翼、嘴角和颈部在更多姿态下的视觉质量、身份与表情保留，仍需真实照片和设备验收，不用小规模主机检查作完整质量承诺。
+
+## 实机剩余检查
+
+- 安装后首次开启飞行模式拍摄，验证模型从安装包读取、默认美颜、各独立项与同 LUT 对比。
+- 前置／后置、所有旋转方向、画幅与不同镜像设置；确定硬件输出与 EXIF 归一化没有重复反转。
+- 正脸、轻侧脸、微笑／大笑、真实不同眼镜、刘海、口罩／手部遮挡、真实弱光、肤色差异、多人相交／贴边、无脸和真实高分辨率照片。检查背景直线、镜架、头发、鼻翼、嘴角、脖子。
+- 确认小脸名称准确，没有完整小头承诺；如需完整小头，先补可靠分割与背景／颈肩处理。
+- 连拍、Activity 重建／进程结束恢复、内存低、存储满、删除竞态、保存原片／胶片、模型不可用回退和反复重出图不累加。
+- 分别测量 Android 设备及未来真正接入的原生 HarmonyOS；API 26 工具链就绪后先核验系统关键点拓扑，再选择并实际验证原生模型路径。
+
+本轮日志：`/workspace/toolchains/android-beauty-build.log`、`core-beauty.log`、`cmake-beauty.log`、`beauty-validation.log`。JUnit / Lint 报告在 `android/app/build/`。
