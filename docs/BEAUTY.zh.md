@@ -63,11 +63,11 @@ WorkManager 的持久化串行队列处理推理、像素和编码，取景界�
 
 ## 鸿蒙 API 26 的实际状态
 
-用户提供目标：HarmonyOS 7.0 / API 26，DevEco Studio 5.0.3.800 及以上。版本说明不是 SDK 本体；当前环境没有 DevEco、API 26 SDK、hvigor、ohpm、HDC、原生推理库或设备。因此没有编译 HAP、没有核验系统人脸检测输出拓扑／精度，也没有验证 MindSpore Lite 模型转换和算子支持。**本轮未向鸿蒙加入美颜开关、空接口或未经构建的推理调用。其现有 LUT 相机源码保留，美颜尚未实现。**
+用户提供目标：HarmonyOS 7.0 / API 26，DevEco Studio 5.0.3.800 及以上。现已收到用户 Windows SDK 的实际元数据：API 26 Release / 26.0.0.105，SDK 位于 `E:\DevEco Studio\sdk\default`，但当前云环境仍没有 DevEco、API 26 SDK、hvigor、ohpm、HDC、原生推理库或设备。因此没有编译 HAP、没有核验系统人脸检测输出拓扑／精度，也没有验证 MindSpore Lite 模型转换和算子支持。**本轮未向鸿蒙加入美颜开关、空接口或未经构建的推理调用。其现有 LUT 相机源码保留，美颜尚未实现。**
 
 Android `LocalFaceDetector` 只是 Android 适配器，C ABI 则接受标准归一化 468 点及其他人物框，可供未来原生适配调用，但 C++ 可编译不等于鸿蒙模型可运行。系统检测若仅提供框／少量五官点，不能直接满足姿态、局部几何与法令纹走廊；必须在实际 SDK 核验点位定义后决定是否引入独立的本地密集关键点模型。不得假设 `.tflite` 可直接被 MindSpore Lite 加载，也未声称成功转换。
 
-仓库原 `compatibleSdkVersion: 5.0.0(12)` 是最低兼容声明，不是 API 26 已验证的证据。本轮不凭版本文本盲改产品配置。需要真实 API 26 工具链之后，才能完成编译、原生模型输出对照、离线安装与拍摄保存验证。
+用户补充实际 SDK 元数据后，已将默认 product 的 compile/target API 显式设为 26；原 `compatibleSdkVersion: 5.0.0(12)` 保留为最低兼容声明。配置更新不代表编译通过；[Windows 检查／构建入口](HARMONY_WINDOWS.zh.md) 用于回传 SDK 实际声明与本机构建结果，之后才能继续原生模型输出对照、离线安装与拍摄保存验证。
 
 ## 主要修改文件
 

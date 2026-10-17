@@ -38,4 +38,6 @@ python3 tools/android_build.py :app:assembleDebug :app:testDebugUnitTest :app:li
 
 产物：`android/app/build/outputs/apk/debug/app-debug.apk`。工具与缓存位于 `/workspace/toolchains`，不用改系统 HOME。详见[构建说明](docs/BUILD.md)。
 
+鸿蒙 Windows 本机已确认 SDK 为 API 26 Release / 26.0.0.105。默认编译／目标 API 已设为 26；[本机检查与 HAP 构建步骤](docs/HARMONY_WINDOWS.zh.md) 可收集实际工具及人脸接口信息。原生美颜和 HAP 编译仍待本机验证。
+
 旧版实验协议和桌面工具保留在 `protocol/`、`tools/g23_dataset.py` 和相关历史文档中，供读取旧数据；它们不是当前相机的功能，也不适用于 0.4 新照片。旧照片可在新版相册继续预览和保存；只有手动选择重新出图时才会采用新的美颜设置。

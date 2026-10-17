@@ -18,7 +18,7 @@ Android 自然美颜已经接入原片解码与现有 LUT 之间，包含默认�
 | apksigner / zipalign | 通过 | v2 调试签名，与旧版相同证书；`-c -P 16 4` |
 | 模型 / LUT / ELF | 通过 | APK 内 15 LUT + 2 模型 SHA 匹配，双 ABI 每个 ELF PT_LOAD 均 ≥16KB；不是设备启动验证 |
 | Android CameraX / LiteRT JNI 真机 | **未验证** | 无手机、模拟器、相机硬件或 /dev/kvm；Robolectric 不能运行 Android LiteRT JNI，另用真实主机模型测试，不伪造 JNI 推理结果 |
-| HarmonyOS 7.0 / API 26 | **美颜未接入、HAP 未编译、设备未验证** | 只收到版本描述，没有 DevEco / SDK / hvigor / ohpm / HDC / 原生推理库 |
+| HarmonyOS 7.0 / API 26 | **美颜未接入、HAP 未编译、设备未验证** | 已收到用户 Windows API 26 Release / SDK 26.0.0.105 元数据；云端没有 DevEco / SDK / hvigor / ohpm / HDC / 原生推理库 |
 | GitHub Actions 远程结果 | 未核验 | 本地检查已运行，不用本报告代替远程 CI 状态 |
 
 ## APK
@@ -51,3 +51,5 @@ SHA-256：`2412470457717ebf70bc6d8d0218cf1484eb73880e6198269583fb56e9738a2b`。
 - 分别测量 Android 设备及未来真正接入的原生 HarmonyOS；API 26 工具链就绪后先核验系统关键点拓扑，再选择并实际验证原生模型路径。
 
 本轮日志：`/workspace/toolchains/android-beauty-build.log`、`core-beauty.log`、`cmake-beauty.log`、`beauty-validation.log`。JUnit / Lint 报告在 `android/app/build/`。
+
+SDK 元数据确认后的配置与 Windows 本机检查入口见 [HARMONY_WINDOWS.zh.md](HARMONY_WINDOWS.zh.md)。compile/target API 已显式设为 26，真实 HAP 构建与推理状态仍待本机执行，不用配置变更代替验证。

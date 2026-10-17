@@ -23,13 +23,15 @@ adb shell am start -n lab.g23/.MainActivity
 
 此云环境没有 DevEco Studio、HarmonyOS SDK、hvigor、ohpm、HDC 或可连接的鸿蒙真机。**未编译 HAP，未声明鸿蒙相机运行成功。**
 
-用户目标为 HarmonyOS 7.0 / API 26，DevEco Studio 5.0.3.800 或更新版本。当前只获得版本描述，没有 SDK 本体。原生美颜本轮尚未实现，详见 [BEAUTY.zh.md](BEAUTY.zh.md)。下面是既有 LUT 相机源码的环境恢复步骤，不能当成 API 26 构建通过。
+用户目标为 HarmonyOS 7.0 / API 26，DevEco Studio 5.0.3.800 或更新版本。现已收到用户 Windows SDK 元数据：API 26 Release / 26.0.0.105，位于 `E:\DevEco Studio\sdk\default`；云端仍没有 SDK 本体。原生美颜本轮尚未实现，详见 [BEAUTY.zh.md](BEAUTY.zh.md)。下面是既有 LUT 相机源码的环境恢复步骤，不能当成 API 26 构建通过。
 
 1. 在安装了目标 HarmonyOS SDK 的 DevEco Studio 中打开 `harmony/`。
-2. 原项目最低兼容声明是 API 12 / 5.0.0；在实际 API 26 SDK 中核验产品配置、Stage 模型与 Native C++ 工具链。同步 hvigor/ohpm；不把最低兼容版本当成当前编译 SDK。
+2. 项目现已显式指定编译／目标 API 26，最低兼容声明保留 API 12 / 5.0.0；在实际 SDK 中核验产品配置、Stage 模型与 Native C++ 工具链。同步 hvigor/ohpm。
 3. 在 IDE 配置实际产品和调试签名。签名证书及设备授权留在本机，不提交源码。
 4. 运行 entry/default。IDE 提供的 hvigor 命令行环境可执行 `hvigorw --mode module -p module=entry@default -p product=default assembleHap`；仓库不伪造 SDK wrapper 或签名文件，使用 IDE 对应工具。
 5. 逐项完成 `ACCEPTANCE.md` 真机清单，特别确认 photoAvailable/JPEG、PixelMap 方向和色彩空间、TaskPool／N-API、冲洗与相机并行、删除竞态以及 SaveButton 写入系统相册。
+
+已提供 Windows 一次性检查／构建入口：见 [本机 API 26 操作说明](HARMONY_WINDOWS.zh.md)。脚本可回传实际 SDK 声明和工具状态，无需重复寻找 SDK 路径。
 
 参考的是 OpenHarmony 官方 Camera Kit / Image Kit API 文档，API 符号经过文档核对，但不等同于 HarmonyOS SDK 编译。若目标 SDK 版本的接口发生变化，应修正并在该 SDK 编译后更新验收状态。
 
